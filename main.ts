@@ -193,7 +193,7 @@ export default class GitHubPlugin extends Plugin {
 tags: 
 ${tagsList.join('\n')}
 aliases: "${repo.name}"
-description: "${repo.description || 'No description'}"
+description: "${(repo.description || 'No description').replace(/"/g, '\\"')}"
 url: "${repo.html_url}"
 owner: "https://github.com/${repo.owner.login}"
 language: ${repo.language || 'Not specified'}
