@@ -1,4 +1,5 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting} from 'obsidian';
+import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder} from 'obsidian';
+import { requestUrl, RequestUrlParam } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -14,6 +15,21 @@ const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	targetDirectory: '',
 }
 
+interface StarredRepo {
+	name: string;
+	full_name: string;
+	html_url: string;
+	description: string;
+	created_at: string;
+	updated_at: string;
+	language: string;
+	stargazers_count: number;
+	owner: {
+		login: string;
+		avatar_url: string;
+	};
+}
+
 export default class GitHubPlugin extends Plugin {
 	settings: GitHubPluginSettings;
 
@@ -21,65 +37,41 @@ export default class GitHubPlugin extends Plugin {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Obsidian GitHub', (evt: MouseEvent) => {
+		const ribbonIconEl = this.addRibbonIcon('star', 'Fetch GitHub Stars', async (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			await this.fetchStars();
 		});
 		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+		ribbonIconEl.addClass('github-plugin-ribbon-class');
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
 		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+		statusBarItemEl.setText('GitHub Stars');
 
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
+			id: 'fetch-github-stars',
+			name: 'Fetch GitHub Stars',
+			callback: async () => {
+				await this.fetchStars();
+			}
+		});
+		
+		this.addCommand({
 			id: 'open-github-modal-simple',
-			name: 'Open GitHub modal (simple)',
+			name: 'Open GitHub modal',
 			callback: () => {
 				new GitHubModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'github-editor-command',
-			name: 'GitHub editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('GitHub Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-github-modal-complex',
-			name: 'Open GitHub modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new GitHubModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
 			}
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new GitHubSettingTab(this.app, this));
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		// Check if settings are ready to fetch stars when plugin loads
+		if (this.settingsAreValid()) {
+			this.fetchStars();
+		}
 	}
 
 	onunload() {
@@ -92,6 +84,132 @@ export default class GitHubPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+	
+	settingsAreValid(): boolean {
+		return Boolean(
+			this.settings.username && 
+			this.settings.targetDirectory
+		);
+	}
+	
+	async fetchStars() {
+		if (!this.settingsAreValid()) {
+			new Notice('Please set both GitHub username and target directory in settings');
+			return;
+		}
+		
+		try {
+			const statusBarItem = this.addStatusBarItem();
+			statusBarItem.setText('Fetching GitHub stars...');
+			
+			// Ensure target directory exists
+			await this.ensureTargetDirectoryExists();
+			
+			// Fetch starred repositories
+			const stars = await this.getStarredRepos();
+			
+			// Create notes for each starred repo
+			let count = 0;
+			for (const repo of stars) {
+				await this.createNoteForRepo(repo);
+				count++;
+			}
+			
+			statusBarItem.setText(`GitHub Stars: ${count} repos synced`);
+			setTimeout(() => {
+				statusBarItem.setText('GitHub Stars');
+			}, 5000);
+			
+			new Notice(`Successfully fetched ${count} starred repositories`);
+		} catch (error) {
+			console.error('Error fetching GitHub stars:', error);
+			new Notice(`Error fetching GitHub stars: ${error.message}`);
+		}
+	}
+	
+	async ensureTargetDirectoryExists() {
+		const { vault } = this.app;
+		const dirs = this.settings.targetDirectory.split('/').filter(p => p.trim());
+		
+		let currentPath = '';
+		for (const dir of dirs) {
+			currentPath = currentPath ? `${currentPath}/${dir}` : dir;
+			if (!(await vault.adapter.exists(currentPath))) {
+				await vault.createFolder(currentPath);
+			}
+		}
+	}
+	
+	async getStarredRepos(): Promise<StarredRepo[]> {
+		const { apiToken, username } = this.settings;
+		const perPage = 100;
+		let page = 1;
+		let allRepos: StarredRepo[] = [];
+		let hasMore = true;
+		
+		while (hasMore) {
+			const params: RequestUrlParam = {
+				url: `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}`,
+				method: 'GET',
+				headers: {
+					'Accept': 'application/vnd.github.v3+json',
+					'User-Agent': 'Obsidian-GitHub-Plugin'
+				}
+			};
+			
+			if (apiToken) {
+				params.headers = {
+					...params.headers,
+					'Authorization': `token ${apiToken}`
+				};
+			}
+			
+			const response = await requestUrl(params);
+			const repos = response.json as StarredRepo[];
+			
+			allRepos = allRepos.concat(repos);
+			
+			if (repos.length < perPage) {
+				hasMore = false;
+			} else {
+				page++;
+			}
+		}
+		
+		return allRepos;
+	}
+	
+	async createNoteForRepo(repo: StarredRepo) {
+		const { vault } = this.app;
+		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
+		
+		const fileContent = `# ${repo.name}
+> ${repo.description || 'No description'}
+
+- **URL**: [${repo.html_url}](${repo.html_url})
+- **Owner**: [${repo.owner.login}](https://github.com/${repo.owner.login})
+- **Language**: ${repo.language || 'Not specified'}
+- **Stars**: ${repo.stargazers_count}
+- **Created**: ${new Date(repo.created_at).toLocaleDateString()}
+- **Updated**: ${new Date(repo.updated_at).toLocaleDateString()}
+
+## Description
+${repo.description || 'No description provided.'}
+
+---
+Fetched via Obsidian GitHub Plugin on ${new Date().toLocaleString()}
+`;
+		
+		try {
+			if (await vault.adapter.exists(fileName)) {
+				await vault.adapter.write(fileName, fileContent);
+			} else {
+				await vault.create(fileName, fileContent);
+			}
+		} catch (error) {
+			console.error(`Error creating note for ${repo.name}:`, error);
+		}
 	}
 }
 
@@ -133,6 +251,7 @@ class GitHubSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.apiToken = value;
 					await this.plugin.saveSettings();
+					this.checkAndFetchStars();
 				}));
 
 		new Setting(containerEl)
@@ -144,6 +263,7 @@ class GitHubSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.username = value;
 					await this.plugin.saveSettings();
+					this.checkAndFetchStars();
 				}));
 
 		new Setting(containerEl)
@@ -155,6 +275,26 @@ class GitHubSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.targetDirectory = value;
 					await this.plugin.saveSettings();
+					this.checkAndFetchStars();
 				}));
+				
+		new Setting(containerEl)
+			.setName('Fetch Stars Now')
+			.setDesc('Manually trigger fetching starred repositories')
+			.addButton(button => button
+				.setButtonText('Fetch Stars')
+				.setCta()
+				.onClick(async () => {
+					await this.plugin.fetchStars();
+				}));
+	}
+	
+	checkAndFetchStars(): void {
+		if (this.plugin.settingsAreValid()) {
+			const notice = new Notice('Settings updated. Fetching GitHub stars...', 3000);
+			setTimeout(() => {
+				this.plugin.fetchStars();
+			}, 1000);
+		}
 	}
 }
