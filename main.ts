@@ -1,13 +1,15 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting} from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
+const tokenNotSet = '';
+
 interface GitHubPluginSettings {
-	mySetting: string;
+	apiToken: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
-	mySetting: 'default'
+	apiToken: tokenNotSet,
 }
 
 export default class GitHubPlugin extends Plugin {
@@ -121,13 +123,13 @@ class GitHubSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('GitHub API Token')
+			.setDesc('Personal access token (https://github.com/settings/personal-access-tokens) with Starring::read')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('Enter your PAT')
+				.setValue(this.plugin.settings.apiToken)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.apiToken = value;
 					await this.plugin.saveSettings();
 				}));
 	}
