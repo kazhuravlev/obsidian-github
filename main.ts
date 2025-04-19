@@ -1,5 +1,5 @@
 import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder} from 'obsidian';
-import { requestUrl, RequestUrlParam } from 'obsidian';
+import {requestUrl, RequestUrlParam} from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -44,10 +44,6 @@ export default class GitHubPlugin extends Plugin {
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('github-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('GitHub Stars');
-
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'fetch-github-stars',
@@ -56,7 +52,7 @@ export default class GitHubPlugin extends Plugin {
 				await this.fetchStars();
 			}
 		});
-		
+
 		this.addCommand({
 			id: 'open-github-modal-simple',
 			name: 'Open GitHub modal',
@@ -85,53 +81,54 @@ export default class GitHubPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
-	
+
 	settingsAreValid(): boolean {
 		return Boolean(
-			this.settings.username && 
+			this.settings.username &&
 			this.settings.targetDirectory
 		);
 	}
-	
+
 	async fetchStars() {
 		if (!this.settingsAreValid()) {
 			new Notice('Please set both GitHub username and target directory in settings');
 			return;
 		}
-		
+
 		try {
-			const statusBarItem = this.addStatusBarItem();
-			statusBarItem.setText('Fetching GitHub stars...');
-			
 			// Ensure target directory exists
 			await this.ensureTargetDirectoryExists();
-			
+
 			// Fetch starred repositories
-			const stars = await this.getStarredRepos();
-			
-			// Create notes for each starred repo
-			let count = 0;
-			for (const repo of stars) {
-				await this.createNoteForRepo(repo);
-				count++;
+			let reposCount = 0;
+			let page = 1;
+			while (true) {
+				const response = await this.getStarredRepos(page);
+
+				for (const repo of response.stars) {
+					await this.createNoteForRepo(repo);
+					reposCount++;
+				}
+
+				new Notice(`Fetched ${reposCount} GitHub stars`);
+				if (!response.hasMore) {
+					break
+				}
+
+				page++;
 			}
-			
-			statusBarItem.setText(`GitHub Stars: ${count} repos synced`);
-			setTimeout(() => {
-				statusBarItem.setText('GitHub Stars');
-			}, 5000);
-			
-			new Notice(`Successfully fetched ${count} starred repositories`);
+
+			new Notice(`Total ${reposCount} GitHub stars`);
 		} catch (error) {
 			console.error('Error fetching GitHub stars:', error);
 			new Notice(`Error fetching GitHub stars: ${error.message}`);
 		}
 	}
-	
+
 	async ensureTargetDirectoryExists() {
-		const { vault } = this.app;
+		const {vault} = this.app;
 		const dirs = this.settings.targetDirectory.split('/').filter(p => p.trim());
-		
+
 		let currentPath = '';
 		for (const dir of dirs) {
 			currentPath = currentPath ? `${currentPath}/${dir}` : dir;
@@ -140,50 +137,37 @@ export default class GitHubPlugin extends Plugin {
 			}
 		}
 	}
-	
-	async getStarredRepos(): Promise<StarredRepo[]> {
-		const { apiToken, username } = this.settings;
+
+	async getStarredRepos(page: number): Promise<{ stars: StarredRepo[], hasMore: boolean }> {
+		const {apiToken, username} = this.settings;
 		const perPage = 100;
-		let page = 1;
-		let allRepos: StarredRepo[] = [];
-		let hasMore = true;
-		
-		while (hasMore) {
-			const params: RequestUrlParam = {
-				url: `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}`,
-				method: 'GET',
-				headers: {
-					'Accept': 'application/vnd.github.v3+json',
-					'User-Agent': 'Obsidian-GitHub-Plugin'
-				}
+
+		const params: RequestUrlParam = {
+			url: `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}`,
+			method: 'GET',
+			headers: {
+				'Accept': 'application/vnd.github.v3+json',
+				'User-Agent': 'Obsidian-GitHub-Plugin'
+			}
+		};
+
+		if (apiToken) {
+			params.headers = {
+				...params.headers,
+				'Authorization': `token ${apiToken}`
 			};
-			
-			if (apiToken) {
-				params.headers = {
-					...params.headers,
-					'Authorization': `token ${apiToken}`
-				};
-			}
-			
-			const response = await requestUrl(params);
-			const repos = response.json as StarredRepo[];
-			
-			allRepos = allRepos.concat(repos);
-			
-			if (repos.length < perPage) {
-				hasMore = false;
-			} else {
-				page++;
-			}
 		}
-		
-		return allRepos;
+
+		const response = await requestUrl(params);
+		const stars = response.json as StarredRepo[];
+
+		return {stars: stars, hasMore: stars.length == perPage}
 	}
-	
+
 	async createNoteForRepo(repo: StarredRepo) {
-		const { vault } = this.app;
+		const {vault} = this.app;
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
-		
+
 		const fileContent = `# ${repo.name}
 > ${repo.description || 'No description'}
 
@@ -200,7 +184,7 @@ ${repo.description || 'No description provided.'}
 ---
 Fetched via Obsidian GitHub Plugin on ${new Date().toLocaleString()}
 `;
-		
+
 		try {
 			if (await vault.adapter.exists(fileName)) {
 				await vault.adapter.write(fileName, fileContent);
@@ -277,7 +261,7 @@ class GitHubSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					this.checkAndFetchStars();
 				}));
-				
+
 		new Setting(containerEl)
 			.setName('Fetch Stars Now')
 			.setDesc('Manually trigger fetching starred repositories')
@@ -288,7 +272,7 @@ class GitHubSettingTab extends PluginSettingTab {
 					await this.plugin.fetchStars();
 				}));
 	}
-	
+
 	checkAndFetchStars(): void {
 		if (this.plugin.settingsAreValid()) {
 			const notice = new Notice('Settings updated. Fetching GitHub stars...', 3000);
