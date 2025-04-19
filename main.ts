@@ -24,6 +24,7 @@ interface StarredRepo {
 	updated_at: string;
 	language: string;
 	stargazers_count: number;
+	topics: string[];
 	owner: {
 		login: string;
 		avatar_url: string;
@@ -112,7 +113,7 @@ export default class GitHubPlugin extends Plugin {
 
 				new Notice(`Fetched ${reposCount} GitHub stars`);
 				if (!response.hasMore) {
-					break
+					break;
 				}
 
 				page++;
@@ -146,7 +147,7 @@ export default class GitHubPlugin extends Plugin {
 			url: `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}`,
 			method: 'GET',
 			headers: {
-				'Accept': 'application/vnd.github.v3+json',
+				'Accept': 'application/vnd.github.v3+json,application/vnd.github.mercy-preview+json',
 				'User-Agent': 'Obsidian-GitHub-Plugin'
 			}
 		};
@@ -168,21 +169,42 @@ export default class GitHubPlugin extends Plugin {
 		const {vault} = this.app;
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
-		const fileContent = `# ${repo.name}
-> ${repo.description || 'No description'}
+		// Build tags list starting with default github tag
+		let tagsList = [];
 
-- **URL**: [${repo.html_url}](${repo.html_url})
-- **Owner**: [${repo.owner.login}](https://github.com/${repo.owner.login})
-- **Language**: ${repo.language || 'Not specified'}
-- **Stars**: ${repo.stargazers_count}
-- **Created**: ${new Date(repo.created_at).toLocaleDateString()}
-- **Updated**: ${new Date(repo.updated_at).toLocaleDateString()}
+		// Add language as a tag if present
+		if (repo.language) {
+			tagsList.push(` - github/language/${repo.language.toLowerCase()}`)
+		}
 
-## Description
-${repo.description || 'No description provided.'}
+		// Add repository topics if they exist
+		for (const topic of repo.topics || []) {
+			tagsList.push(` - github/topic/${topic}`)
+		}
 
+		// Format dates for Obsidian
+		const createdDate = new Date(repo.created_at);
+		const createdFormatted = `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, '0')}-${String(createdDate.getDate()).padStart(2, '0')}`;
+		const currentDate = new Date();
+		const modifiedFormatted = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+
+
+		const fileContent = `---
+tags: 
+${tagsList.join('\n')}
+aliases: "${repo.name}"
+description: "${repo.description || 'No description'}"
+url: "${repo.html_url}"
+owner: "https://github.com/${repo.owner.login}"
+language: ${repo.language || 'Not specified'}
+stars: ${repo.stargazers_count}
+created: ${createdFormatted}
+modified: ${modifiedFormatted}
+lastUpdated: ${new Date().toLocaleString()}
 ---
-Fetched via Obsidian GitHub Plugin on ${new Date().toLocaleString()}
+
+# ${repo.name}
+
 `;
 
 		try {
