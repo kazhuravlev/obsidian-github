@@ -2,14 +2,16 @@ import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Sett
 
 // Remember to rename these classes and interfaces!
 
-const tokenNotSet = '';
-
 interface GitHubPluginSettings {
 	apiToken: string;
+	username: string;
+	targetDirectory: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
-	apiToken: tokenNotSet,
+	apiToken: '',
+	username: '',
+	targetDirectory: '',
 }
 
 export default class GitHubPlugin extends Plugin {
@@ -130,6 +132,28 @@ class GitHubSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.apiToken)
 				.onChange(async (value) => {
 					this.plugin.settings.apiToken = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('GitHub Username')
+			.setDesc('Your GitHub username')
+			.addText(text => text
+				.setPlaceholder('Enter your username')
+				.setValue(this.plugin.settings.username)
+				.onChange(async (value) => {
+					this.plugin.settings.username = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Target Directory')
+			.setDesc('Directory where GitHub data will be stored')
+			.addText(text => text
+				.setPlaceholder('Enter target directory')
+				.setValue(this.plugin.settings.targetDirectory)
+				.onChange(async (value) => {
+					this.plugin.settings.targetDirectory = value;
 					await this.plugin.saveSettings();
 				}));
 	}
