@@ -1,8 +1,8 @@
 {
 	"id": "obsidian-github",
-	"name": "Obsidian GitHub",
+	"name": "GitHub Sync",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
+	"minAppVersion": "1.8.0",
 	"description": "Import your starred GitHub repositories into Obsidian notes with metadata",
 	"author": "Kirill Zhuravlev",
 	"authorUrl": "https://github.com/kazhuravlev",
