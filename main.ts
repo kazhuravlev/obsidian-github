@@ -191,7 +191,7 @@ export default class GitHubPlugin extends Plugin {
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
 		// Build tags list starting with default github tag
-		let tagsList = [];
+		let tagsList = ['type/github-star'];
 
 		// Add language as a tag if present
 		if (repo.language) {
