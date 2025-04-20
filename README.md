@@ -1,4 +1,4 @@
-# GitHub Stars for Obsidian
+# GitHub Integration
 
 This Obsidian plugin imports your starred GitHub repositories into your Obsidian vault as notes with rich metadata. Keep track of interesting repositories directly in your knowledge base!
 
@@ -12,7 +12,7 @@ This Obsidian plugin imports your starred GitHub repositories into your Obsidian
 
 ## Installation
 
-1. Search for "GitHub Stars" in Obsidian's community plugins browser
+1. Search for "GitHub Integration" in Obsidian's community plugins browser
 2. Install the plugin
 3. Enable the plugin
 
@@ -27,18 +27,11 @@ This Obsidian plugin imports your starred GitHub repositories into your Obsidian
 
 ### Configuration
 
-1. Go to Settings → GitHub Stars
+1. Go to Settings → GitHub Integration
 2. Enter your GitHub username
 3. (Optional) Add a GitHub Personal Access Token for higher API rate limits
 4. Set a target directory where your star notes will be stored
-
-### Importing Stars
-
-There are several ways to import your GitHub stars:
-
-- Click the star icon (⭐) in the left ribbon
-- Run the "Fetch Stars" command from the command palette
-- Use "Force Fetch All Stars" to re-download all your starred repositories
+5. Click "Sync Stars" button to start sync immediately
 
 ### Note Format
 
@@ -89,9 +82,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Credits
 
-- Icon: [GitHub mark](https://github.com/logos)
 - Built for [Obsidian](https://obsidian.md)
 
 ## Support
 
-If you encounter any issues or have feature requests, please create an issue on the [GitHub repository](https://github.com/YourUsername/obsidian-github-stars/issues).
+If you encounter any issues or have feature requests, please create an issue on the [GitHub repository](https://github.com/kazhuravlev/obsidian-github).
