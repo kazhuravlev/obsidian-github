@@ -38,7 +38,7 @@ export default class GitHubPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		
+
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'obsidian-github-fetch-stars-force',
