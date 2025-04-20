@@ -108,10 +108,13 @@ export default class GitHubPlugin extends Plugin {
 
 				for (const repo of response.stars) {
 					await this.createNoteForRepo(repo);
+
 					reposCount++;
 				}
 
 				new Notice(`Fetched ${reposCount} GitHub stars`);
+
+				// Check if we have more pages to fetch
 				if (!response.hasMore) {
 					break;
 				}
@@ -144,7 +147,7 @@ export default class GitHubPlugin extends Plugin {
 		const perPage = 100;
 
 		const params: RequestUrlParam = {
-			url: `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}`,
+			url: `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}&sort=created&direction=desc`,
 			method: 'GET',
 			headers: {
 				'Accept': 'application/vnd.github.v3+json,application/vnd.github.mercy-preview+json',
@@ -165,7 +168,7 @@ export default class GitHubPlugin extends Plugin {
 		return {stars: stars, hasMore: stars.length == perPage}
 	}
 
-	async createNoteForRepo(repo: StarredRepo) {
+	async createNoteForRepo(repo: StarredRepo): Promise<boolean> {
 		const {vault} = this.app;
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
@@ -188,13 +191,14 @@ export default class GitHubPlugin extends Plugin {
 		const currentDate = new Date();
 		const modifiedFormatted = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
 
+		const exists = await vault.adapter.exists(fileName);
 		try {
 			let file: TFile;
-			
-			if (await vault.adapter.exists(fileName)) {
+
+			if (exists) {
 				// Get existing file
 				const existingFile = this.app.vault.getAbstractFileByPath(fileName);
-				
+
 				if (existingFile && existingFile instanceof TFile) {
 					file = existingFile;
 				} else {
@@ -206,7 +210,7 @@ export default class GitHubPlugin extends Plugin {
 				const initialContent = `# ${repo.name}\n\n`;
 				file = await vault.create(fileName, initialContent);
 			}
-			
+
 			// Use the same API for both new and existing files
 			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 				frontmatter['tags'] = tagsList;
@@ -223,6 +227,8 @@ export default class GitHubPlugin extends Plugin {
 		} catch (error) {
 			console.error(`Error creating note for ${repo.name}:`, error);
 		}
+
+		return !exists;
 	}
 }
 
