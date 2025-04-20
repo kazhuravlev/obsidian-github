@@ -1,4 +1,4 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile} from 'obsidian';
+import {App, Notice, Plugin, PluginSettingTab, Setting, TFile} from 'obsidian';
 import {requestUrl, RequestUrlParam} from 'obsidian';
 
 // Remember to rename these classes and interfaces!
@@ -7,12 +7,14 @@ interface GitHubPluginSettings {
 	apiToken: string;
 	username: string;
 	targetDirectory: string;
+	lastFetchDate: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	apiToken: '',
 	username: '',
 	targetDirectory: '',
+	lastFetchDate: '',
 }
 
 interface StarredRepo {
@@ -47,18 +49,20 @@ export default class GitHubPlugin extends Plugin {
 
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'fetch-github-stars',
-			name: 'Fetch GitHub Stars',
+			id: 'obsidian-github-fetch-stars-force',
+			name: 'Force fetch all stars',
 			callback: async () => {
+				this.settings.lastFetchDate = ""
+				await this.saveSettings()
 				await this.fetchStars();
 			}
 		});
 
 		this.addCommand({
-			id: 'open-github-modal-simple',
-			name: 'Open GitHub modal',
-			callback: () => {
-				new GitHubModal(this.app).open();
+			id: 'obsidian-github-fetch-stars',
+			name: 'Fetch stars',
+			callback: async () => {
+				await this.fetchStars();
 			}
 		});
 
@@ -103,16 +107,24 @@ export default class GitHubPlugin extends Plugin {
 			// Fetch starred repositories
 			let reposCount = 0;
 			let page = 1;
-			while (true) {
+			let continueFetch = true;
+			const firstFetch = this.settings.lastFetchDate == "";
+			while (firstFetch || continueFetch) {
 				const response = await this.getStarredRepos(page);
 
 				for (const repo of response.stars) {
-					await this.createNoteForRepo(repo);
+					const created = await this.createNoteForRepo(repo);
+					if (!firstFetch && !created) {
+						continueFetch = false;
+						break;
+					}
 
 					reposCount++;
 				}
 
-				new Notice(`Fetched ${reposCount} GitHub stars`);
+				if (reposCount !== 0) {
+					new Notice(`Fetched ${reposCount} GitHub stars`);
+				}
 
 				// Check if we have more pages to fetch
 				if (!response.hasMore) {
@@ -122,7 +134,13 @@ export default class GitHubPlugin extends Plugin {
 				page++;
 			}
 
-			new Notice(`Total ${reposCount} GitHub stars`);
+			// Update last fetch date
+			this.settings.lastFetchDate = new Date().toISOString();
+			await this.saveSettings();
+
+			if (reposCount !== 0) {
+				new Notice(`Total ${reposCount} GitHub stars`);
+			}
 		} catch (error) {
 			console.error('Error fetching GitHub stars:', error);
 			new Notice(`Error fetching GitHub stars: ${error.message}`);
@@ -232,21 +250,6 @@ export default class GitHubPlugin extends Plugin {
 	}
 }
 
-class GitHubModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
 
 class GitHubSettingTab extends PluginSettingTab {
 	plugin: GitHubPlugin;
@@ -270,7 +273,6 @@ class GitHubSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.apiToken = value;
 					await this.plugin.saveSettings();
-					this.checkAndFetchStars();
 				}));
 
 		new Setting(containerEl)
@@ -282,7 +284,6 @@ class GitHubSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.username = value;
 					await this.plugin.saveSettings();
-					this.checkAndFetchStars();
 				}));
 
 		new Setting(containerEl)
@@ -294,17 +295,28 @@ class GitHubSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.targetDirectory = value;
 					await this.plugin.saveSettings();
-					this.checkAndFetchStars();
 				}));
 
+		// Display last fetch date if available
+		if (this.plugin.settings.lastFetchDate) {
+			const lastFetchDate = new Date(this.plugin.settings.lastFetchDate);
+			new Setting(containerEl)
+				.setName('Last Fetch')
+				.setDesc(`Stars were last fetched on ${lastFetchDate.toLocaleString()}`);
+		}
+
 		new Setting(containerEl)
-			.setName('Fetch Stars Now')
-			.setDesc('Manually trigger fetching starred repositories')
+			.setName('Force Fetch Stars')
+			.setDesc('Manually trigger re-fetching starred repositories')
 			.addButton(button => button
 				.setButtonText('Fetch Stars')
 				.setCta()
 				.onClick(async () => {
+					this.plugin.settings.lastFetchDate = ""
+					await this.plugin.saveSettings()
 					await this.plugin.fetchStars();
+					// Refresh the settings view to show updated last fetch date
+					this.display();
 				}));
 	}
 
