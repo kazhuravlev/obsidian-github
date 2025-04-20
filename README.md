@@ -1,6 +1,7 @@
 # GitHub Integration
 
-This Obsidian plugin imports your starred GitHub repositories into your Obsidian vault as notes with rich metadata. Keep track of interesting repositories directly in your knowledge base!
+This Obsidian plugin imports your starred GitHub repositories into your Obsidian vault as notes with rich metadata. Keep
+track of interesting repositories directly in your knowledge base!
 
 ## Features
 
@@ -57,7 +58,8 @@ lastUpdated: 6/15/2023, 3:45:00 PM
 
 ## Security Note
 
-If you choose to use a GitHub API token, it will be stored in your Obsidian config. While this is generally secure, please be aware of the risks if you share your vault or config files.
+If you choose to use a GitHub API token, it will be stored in your Obsidian config. While this is generally secure,
+please be aware of the risks if you share your vault or config files.
 
 ## License
 
@@ -86,4 +88,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-If you encounter any issues or have feature requests, please create an issue on the [GitHub repository](https://github.com/kazhuravlev/obsidian-github).
+If you encounter any issues or have feature requests, please create an issue on
+the [GitHub repository](https://github.com/kazhuravlev/obsidian-github).
