@@ -1,4 +1,4 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder} from 'obsidian';
+import {App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile} from 'obsidian';
 import {requestUrl, RequestUrlParam} from 'obsidian';
 
 // Remember to rename these classes and interfaces!
@@ -174,12 +174,12 @@ export default class GitHubPlugin extends Plugin {
 
 		// Add language as a tag if present
 		if (repo.language) {
-			tagsList.push(` - github/language/${repo.language.toLowerCase()}`)
+			tagsList.push(`github/language/${repo.language.toLowerCase()}`)
 		}
 
 		// Add repository topics if they exist
 		for (const topic of repo.topics || []) {
-			tagsList.push(` - github/topic/${topic}`)
+			tagsList.push(`github/topic/${topic}`)
 		}
 
 		// Format dates for Obsidian
@@ -188,31 +188,38 @@ export default class GitHubPlugin extends Plugin {
 		const currentDate = new Date();
 		const modifiedFormatted = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
 
-
-		const fileContent = `---
-tags: 
-${tagsList.join('\n')}
-aliases: "${repo.name}"
-description: "${(repo.description || 'No description').replace(/"/g, '\\"')}"
-url: "${repo.html_url}"
-owner: "https://github.com/${repo.owner.login}"
-language: ${repo.language || 'Not specified'}
-stars: ${repo.stargazers_count}
-created: ${createdFormatted}
-modified: ${modifiedFormatted}
-lastUpdated: ${new Date().toLocaleString()}
----
-
-# ${repo.name}
-
-`;
-
 		try {
+			let file: TFile;
+			
 			if (await vault.adapter.exists(fileName)) {
-				await vault.adapter.write(fileName, fileContent);
+				// Get existing file
+				const existingFile = this.app.vault.getAbstractFileByPath(fileName);
+				
+				if (existingFile && existingFile instanceof TFile) {
+					file = existingFile;
+				} else {
+					// This shouldn't happen, but just in case
+					throw new Error(`File exists but couldn't be accessed: ${fileName}`);
+				}
 			} else {
-				await vault.create(fileName, fileContent);
+				// Create new file with minimal content
+				const initialContent = `# ${repo.name}\n\n`;
+				file = await vault.create(fileName, initialContent);
 			}
+			
+			// Use the same API for both new and existing files
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				frontmatter['tags'] = tagsList;
+				frontmatter['aliases'] = repo.name;
+				frontmatter['description'] = (repo.description || 'No description').replace(/"/g, '\\"');
+				frontmatter['url'] = repo.html_url;
+				frontmatter['owner'] = `https://github.com/${repo.owner.login}`;
+				frontmatter['language'] = repo.language || 'Not specified';
+				frontmatter['stars'] = repo.stargazers_count;
+				frontmatter['created'] = createdFormatted;
+				frontmatter['modified'] = modifiedFormatted;
+				frontmatter['lastUpdated'] = new Date().toLocaleString();
+			});
 		} catch (error) {
 			console.error(`Error creating note for ${repo.name}:`, error);
 		}
