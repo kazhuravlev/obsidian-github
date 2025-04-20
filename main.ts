@@ -38,15 +38,7 @@ export default class GitHubPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('star', 'Fetch GitHub Stars', async (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			await this.fetchStars();
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('github-plugin-ribbon-class');
-
+		
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'obsidian-github-fetch-stars-force',
