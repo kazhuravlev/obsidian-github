@@ -41,7 +41,7 @@ export default class GitHubPlugin extends Plugin {
 
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'obsidian-github-fetch-stars-force',
+			id: 'github-fetch-stars-force',
 			name: 'Force fetch all stars',
 			callback: async () => {
 				this.settings.lastFetchDate = ""
@@ -51,7 +51,7 @@ export default class GitHubPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'obsidian-github-fetch-stars',
+			id: 'github-fetch-stars',
 			name: 'Fetch stars',
 			callback: async () => {
 				await this.fetchStars();
@@ -88,7 +88,7 @@ export default class GitHubPlugin extends Plugin {
 
 	async fetchStars() {
 		if (!this.settingsAreValid()) {
-			new Notice('Please set both GitHub username and target directory in settings');
+			new Notice('Please set both github username and target directory in settings');
 			return;
 		}
 
@@ -115,7 +115,7 @@ export default class GitHubPlugin extends Plugin {
 				}
 
 				if (reposCount !== 0) {
-					new Notice(`Fetched ${reposCount} GitHub stars`);
+					new Notice(`Fetched ${reposCount} github stars`);
 				}
 
 				// Check if we have more pages to fetch
@@ -131,7 +131,7 @@ export default class GitHubPlugin extends Plugin {
 			await this.saveSettings();
 
 			if (reposCount !== 0) {
-				new Notice(`Total ${reposCount} GitHub stars`);
+				new Notice(`Total ${reposCount} github stars`);
 			}
 		} catch (error) {
 			console.error('Error fetching GitHub stars:', error);
@@ -161,7 +161,7 @@ export default class GitHubPlugin extends Plugin {
 			method: 'GET',
 			headers: {
 				'Accept': 'application/vnd.github.v3+json,application/vnd.github.mercy-preview+json',
-				'User-Agent': 'Obsidian-GitHub-Plugin'
+				'User-Agent': 'GitHub-Plugin'
 			}
 		};
 
@@ -257,10 +257,10 @@ class GitHubSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('GitHub API Token')
-			.setDesc('Personal access token (https://github.com/settings/personal-access-tokens) with Starring::read')
+			.setName('GitHub API token')
+			.setDesc('Personal access token (https://github.com/settings/personal-access-tokens) with starring::read')
 			.addText(text => text
-				.setPlaceholder('Enter your PAT')
+				.setPlaceholder('Enter your personal access token')
 				.setValue(this.plugin.settings.apiToken)
 				.onChange(async (value) => {
 					this.plugin.settings.apiToken = value;
@@ -268,8 +268,8 @@ class GitHubSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('GitHub Username')
-			.setDesc('Your GitHub username')
+			.setName('GitHub username')
+			.setDesc('Your github username')
 			.addText(text => text
 				.setPlaceholder('Enter your username')
 				.setValue(this.plugin.settings.username)
@@ -279,8 +279,8 @@ class GitHubSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Target Directory')
-			.setDesc('Directory where GitHub data will be stored')
+			.setName('Target directory')
+			.setDesc('Directory where github data will be stored')
 			.addText(text => text
 				.setPlaceholder('Enter target directory')
 				.setValue(this.plugin.settings.targetDirectory)
@@ -293,15 +293,15 @@ class GitHubSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.lastFetchDate) {
 			const lastFetchDate = new Date(this.plugin.settings.lastFetchDate);
 			new Setting(containerEl)
-				.setName('Last Fetch')
+				.setName('Last fetch')
 				.setDesc(`Stars were last fetched on ${lastFetchDate.toLocaleString()}`);
 		}
 
 		new Setting(containerEl)
-			.setName('Force Fetch Stars')
+			.setName('Force fetch stars')
 			.setDesc('Manually trigger re-fetching starred repositories')
 			.addButton(button => button
-				.setButtonText('Fetch Stars')
+				.setButtonText('Fetch stars')
 				.setCta()
 				.onClick(async () => {
 					this.plugin.settings.lastFetchDate = ""
@@ -314,7 +314,7 @@ class GitHubSettingTab extends PluginSettingTab {
 
 	checkAndFetchStars(): void {
 		if (this.plugin.settingsAreValid()) {
-			const notice = new Notice('Settings updated. Fetching GitHub stars...', 3000);
+			const notice = new Notice('Settings updated. Fetching github stars...', 3000);
 			setTimeout(() => {
 				this.plugin.fetchStars();
 			}, 1000);

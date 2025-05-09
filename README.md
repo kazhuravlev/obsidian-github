@@ -19,7 +19,7 @@ track of interesting repositories directly in your knowledge base!
 
 ### Manual Installation
 
-1. Download the latest release from the [releases page](https://github.com/YourUsername/obsidian-github-stars/releases)
+1. Download the latest release from the [releases page](https://github.com/kazhuravlev/obsidian-github/releases)
 2. Extract the files to your vault's plugins folder: `<vault>/.obsidian/plugins/obsidian-github-stars/`
 3. Reload Obsidian
 4. Enable the plugin in Settings → Community plugins
