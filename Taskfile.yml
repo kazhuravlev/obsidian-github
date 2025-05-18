@@ -11,6 +11,10 @@ tasks:
     cmds:
       - gt t i min
       - task: 'release:upd-manifest'
+  release:patch:
+    cmds:
+      - gt t i patch
+      - task: 'release:upd-manifest'
   release:upd-manifest:
     vars:
       VERSION:
@@ -20,3 +24,6 @@ tasks:
       - jq '.version = "{{ .VERSION }}"' manifest.json > manifest2.json
       - cat manifest2.json > manifest.json
       - rm manifest2.json
+      - git commit -a --amend --no-edit
+      - git tag -d {{ .VERSION }}
+      - git tag {{ .VERSION }}
