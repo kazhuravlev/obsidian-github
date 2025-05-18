@@ -1,7 +1,7 @@
 {
   "id": "github",
   "name": "GitHub Integration",
-  "version": "1.2.7",
+  "version": "1.3.0",
   "minAppVersion": "1.8.0",
   "description": "Import your starred GitHub repositories into notes with metadata",
   "author": "Kirill Zhuravlev",
