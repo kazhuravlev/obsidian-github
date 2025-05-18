@@ -258,13 +258,15 @@ class GitHubSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('GitHub API token')
 			.setDesc('Personal access token (https://github.com/settings/personal-access-tokens) with starring::read')
-			.addText(text => text
-				.setPlaceholder('Enter your personal access token')
-				.setValue(this.plugin.settings.apiToken)
-				.onChange(async (value) => {
+			.addText(text => {
+				text.setPlaceholder('Enter your personal access token')
+					.setValue(this.plugin.settings.apiToken);
+				text.inputEl.type = 'password';
+				text.onChange(async (value) => {
 					this.plugin.settings.apiToken = value;
 					await this.plugin.saveSettings();
-				}));
+				});
+			});
 
 		new Setting(containerEl)
 			.setName('GitHub username')
