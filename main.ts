@@ -312,13 +312,4 @@ class GitHubSettingTab extends PluginSettingTab {
 					this.display();
 				}));
 	}
-
-	checkAndFetchStars(): void {
-		if (this.plugin.settingsAreValid()) {
-			new Notice('Settings updated. Fetching github stars...', 3000);
-			setTimeout(() => {
-				this.plugin.fetchStars();
-			}, 1000);
-		}
-	}
 }
