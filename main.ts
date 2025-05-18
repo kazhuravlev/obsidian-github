@@ -1,5 +1,6 @@
 import {App, Notice, Plugin, PluginSettingTab, Setting, TFile} from 'obsidian';
 import {requestUrl, RequestUrlParam} from 'obsidian';
+import { DirSuggest } from 'suggest';
 
 
 interface GitHubPluginSettings {
@@ -282,13 +283,19 @@ class GitHubSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Target directory')
 			.setDesc('Directory where github data will be stored')
-			.addText(text => text
-				.setPlaceholder('Enter target directory')
-				.setValue(this.plugin.settings.targetDirectory)
-				.onChange(async (value) => {
-					this.plugin.settings.targetDirectory = value;
-					await this.plugin.saveSettings();
-				}));
+			.addSearch(cb => {
+				try {
+					new DirSuggest(this.app, cb.inputEl);
+				} catch (e) {
+          new Notice(e.toString(), 3000);
+				}
+				cb.setPlaceholder('Example: dir1/dir2')
+					.setValue(this.plugin.settings.targetDirectory)
+					.onChange(async (dir) => {
+						this.plugin.settings.targetDirectory = dir;
+					  await	this.plugin.saveSettings();
+					});
+			});
 
 		// Display last fetch date if available
 		if (this.plugin.settings.lastFetchDate) {
