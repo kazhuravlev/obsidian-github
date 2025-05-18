@@ -1,7 +1,6 @@
 import {App, Notice, Plugin, PluginSettingTab, Setting, TFile} from 'obsidian';
 import {requestUrl, RequestUrlParam} from 'obsidian';
 
-// Remember to rename these classes and interfaces!
 
 interface GitHubPluginSettings {
 	apiToken: string;
@@ -183,7 +182,7 @@ export default class GitHubPlugin extends Plugin {
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
 		// Build tags list starting with default github tag
-		let tagsList = ['type/github-star'];
+		const tagsList = ['type/github-star'];
 
 		// Add language as a tag if present
 		if (repo.language) {
@@ -314,7 +313,7 @@ class GitHubSettingTab extends PluginSettingTab {
 
 	checkAndFetchStars(): void {
 		if (this.plugin.settingsAreValid()) {
-			const notice = new Notice('Settings updated. Fetching github stars...', 3000);
+			new Notice('Settings updated. Fetching github stars...', 3000);
 			setTimeout(() => {
 				this.plugin.fetchStars();
 			}, 1000);
