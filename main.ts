@@ -88,7 +88,7 @@ export default class GitHubPlugin extends Plugin {
 
 	async fetchStars() {
 		if (!this.settingsAreValid()) {
-			new Notice('Please set both github username and target directory in settings');
+			new Notice('Please set both GitHub username and target directory in settings');
 			return;
 		}
 
@@ -115,7 +115,7 @@ export default class GitHubPlugin extends Plugin {
 				}
 
 				if (reposCount !== 0) {
-					new Notice(`Fetched ${reposCount} github stars`);
+					new Notice(`Fetched ${reposCount} GitHub stars`);
 				}
 
 				// Check if we have more pages to fetch
@@ -131,7 +131,7 @@ export default class GitHubPlugin extends Plugin {
 			await this.saveSettings();
 
 			if (reposCount !== 0) {
-				new Notice(`Total ${reposCount} github stars`);
+				new Notice(`Total ${reposCount} GitHub stars`);
 			}
 		} catch (error) {
 			console.error('Error fetching GitHub stars:', error);
@@ -271,7 +271,7 @@ class GitHubSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('GitHub username')
-			.setDesc('Your github username')
+			.setDesc('GitHub username')
 			.addText(text => text
 				.setPlaceholder('Enter your username')
 				.setValue(this.plugin.settings.username)
@@ -282,7 +282,7 @@ class GitHubSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Target directory')
-			.setDesc('Directory where github data will be stored')
+			.setDesc('Directory where GitHub data will be stored')
 			.addSearch(cb => {
 				try {
 					new DirSuggest(this.app, cb.inputEl);
