@@ -7,3 +7,16 @@ tasks:
   build:
     cmds:
       - npm run build
+  release:min:
+    cmds:
+      - gt t i min
+      - task: 'release:upd-manifest'
+  release:upd-manifest:
+    vars:
+      VERSION:
+        sh: "gt t l -f tag"
+    cmds:
+      - echo {{.VERSION}}
+      - jq '.version = "{{ .VERSION }}"' manifest.json > manifest2.json
+      - cat manifest2.json > manifest.json
+      - rm manifest2.json
