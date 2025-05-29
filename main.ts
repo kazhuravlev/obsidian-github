@@ -11,6 +11,7 @@ interface GitHubPluginSettings {
 	syncEnabled: boolean;
 	syncPullRequests: boolean;
 	lastPRFetchDate: string;
+	prDirectory: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	syncEnabled: true,
 	syncPullRequests: true,
 	lastPRFetchDate: '',
+	prDirectory: '',
 }
 
 interface StarredRepo {
@@ -107,10 +109,19 @@ export default class GitHubPlugin extends Plugin {
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new GitHubSettingTab(this.app, this));
 
-		// Check if settings are ready to fetch stars when plugin loads
-		await this.fetchStars();
-		if (this.settings.syncPullRequests) {
-			await this.fetchPullRequests();
+		// Always check for new data asynchronously without blocking
+		if (this.settings.syncEnabled && this.settingsAreValid()) {
+			// Use setTimeout to ensure the plugin loads immediately
+			setTimeout(async () => {
+				try {
+					await this.fetchStars();
+					if (this.settings.syncPullRequests) {
+						await this.fetchPullRequests();
+					}
+				} catch (error) {
+					console.error('Background sync failed:', error);
+				}
+			}, 100);
 		}
 	}
 
@@ -194,6 +205,20 @@ export default class GitHubPlugin extends Plugin {
 	async ensureTargetDirectoryExists() {
 		const {vault} = this.app;
 		const dirs = this.settings.targetDirectory.split('/').filter(p => p.trim());
+
+		let currentPath = '';
+		for (const dir of dirs) {
+			currentPath = currentPath ? `${currentPath}/${dir}` : dir;
+			if (!(await vault.adapter.exists(currentPath))) {
+				await vault.createFolder(currentPath);
+			}
+		}
+	}
+
+	async ensurePRDirectoryExists() {
+		const {vault} = this.app;
+		const prDir = this.settings.prDirectory || this.settings.targetDirectory;
+		const dirs = prDir.split('/').filter(p => p.trim());
 
 		let currentPath = '';
 		for (const dir of dirs) {
@@ -305,8 +330,8 @@ export default class GitHubPlugin extends Plugin {
 		}
 
 		try {
-			// Ensure target directory exists
-			await this.ensureTargetDirectoryExists();
+			// Ensure PR directory exists
+			await this.ensurePRDirectoryExists();
 
 			// Fetch pull requests
 			let prsCount = 0;
@@ -388,7 +413,8 @@ export default class GitHubPlugin extends Plugin {
 		const repoName = repoUrlParts[repoUrlParts.length - 1];
 		const repoFullName = `${repoOwner}/${repoName}`;
 		
-		const fileName = `${this.settings.targetDirectory}/pr-${repoOwner}-${repoName}-${pr.number}.md`;
+		const prDir = this.settings.prDirectory || this.settings.targetDirectory;
+		const fileName = `${prDir}/pr-${repoOwner}-${repoName}-${pr.number}.md`;
 
 		// Build tags list
 		const tagsList = ['type/github-pr'];
@@ -527,6 +553,23 @@ class GitHubSettingTab extends PluginSettingTab {
 					this.plugin.settings.syncPullRequests = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Pull requests directory')
+			.setDesc('Directory where pull request notes will be stored (leave empty to use same as stars)')
+			.addSearch(cb => {
+				try {
+					new DirSuggest(this.app, cb.inputEl);
+				} catch (e) {
+					new Notice(e.toString(), 3000);
+				}
+				cb.setPlaceholder('Example: PRs or GitHub/PRs')
+					.setValue(this.plugin.settings.prDirectory)
+					.onChange(async (dir) => {
+						this.plugin.settings.prDirectory = dir;
+						await this.plugin.saveSettings();
+					});
+			});
     
     let lastFetchDate = 'never';
     if (this.plugin.settings.lastFetchDate) {
