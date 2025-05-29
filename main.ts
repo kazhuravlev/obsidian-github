@@ -8,6 +8,7 @@ interface GitHubPluginSettings {
 	username: string;
 	targetDirectory: string;
 	lastFetchDate: string;
+	syncEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
@@ -15,6 +16,7 @@ const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	username: '',
 	targetDirectory: '',
 	lastFetchDate: '',
+	syncEnabled: true,
 }
 
 interface StarredRepo {
@@ -62,9 +64,7 @@ export default class GitHubPlugin extends Plugin {
 		this.addSettingTab(new GitHubSettingTab(this.app, this));
 
 		// Check if settings are ready to fetch stars when plugin loads
-		if (this.settingsAreValid()) {
-			this.fetchStars();
-		}
+		await this.fetchStars();
 	}
 
 	onunload() {
@@ -87,8 +87,13 @@ export default class GitHubPlugin extends Plugin {
 	}
 
 	async fetchStars() {
+		if (!this.settings.syncEnabled) {
+			new Notice('Sync is disabled. Enable it in settings to fetch stars.');
+			return;
+		}
+
 		if (!this.settingsAreValid()) {
-			new Notice('Please set both GitHub username and target directory in settings');
+			new Notice('Please set both GitHub username and target directory in settings.');
 			return;
 		}
 
@@ -296,6 +301,16 @@ class GitHubSettingTab extends PluginSettingTab {
 					  await	this.plugin.saveSettings();
 					});
 			});
+
+		new Setting(containerEl)
+			.setName('Enable sync')
+			.setDesc('Allow automatic and manual syncing of GitHub stars')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.syncEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.syncEnabled = value;
+					await this.plugin.saveSettings();
+				}));
 
 		// Display last fetch date if available
 		if (this.plugin.settings.lastFetchDate) {
