@@ -229,6 +229,19 @@ export default class GitHubPlugin extends Plugin {
 		}
 	}
 
+	async ensureDirectoryExists(dirPath: string) {
+		const {vault} = this.app;
+		const dirs = dirPath.split('/').filter(p => p.trim());
+
+		let currentPath = '';
+		for (const dir of dirs) {
+			currentPath = currentPath ? `${currentPath}/${dir}` : dir;
+			if (!(await vault.adapter.exists(currentPath))) {
+				await vault.createFolder(currentPath);
+			}
+		}
+	}
+
 	async getStarredRepos(page: number): Promise<{ stars: StarredRepo[], hasMore: boolean }> {
 		const {apiToken, username} = this.settings;
 		const perPage = 100;
@@ -413,8 +426,15 @@ export default class GitHubPlugin extends Plugin {
 		const repoName = repoUrlParts[repoUrlParts.length - 1];
 		const repoFullName = `${repoOwner}/${repoName}`;
 		
+		// Create a safe filename from PR title
+		const safePrTitle = pr.title
+			.replace(/[\\/:*?"<>|]/g, '-') // Replace invalid filename characters
+			.replace(/\s+/g, '_') // Replace spaces with underscores
+			.substring(0, 50); // Limit length to avoid too long filenames
+		
 		const prDir = this.settings.prDirectory || this.settings.targetDirectory;
-		const fileName = `${prDir}/pr-${repoOwner}-${repoName}-${pr.number}.md`;
+		const repoDir = `${prDir}/${repoOwner}/${repoName}`;
+		const fileName = `${repoDir}/${pr.number}_${safePrTitle}.md`;
 
 		// Build tags list
 		const tagsList = ['type/github-pr'];
@@ -436,6 +456,9 @@ export default class GitHubPlugin extends Plugin {
 		for (const label of pr.labels || []) {
 			tagsList.push(`github/pr-label/${label.name.toLowerCase().replace(/\s+/g, '-')}`);
 		}
+
+		// Ensure repository directory exists
+		await this.ensureDirectoryExists(repoDir);
 
 		const exists = await vault.adapter.exists(fileName);
 		try {
