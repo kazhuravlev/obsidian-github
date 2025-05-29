@@ -9,6 +9,8 @@ interface GitHubPluginSettings {
 	targetDirectory: string;
 	lastFetchDate: string;
 	syncEnabled: boolean;
+	syncPullRequests: boolean;
+	lastPRFetchDate: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
@@ -17,6 +19,8 @@ const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	targetDirectory: '',
 	lastFetchDate: '',
 	syncEnabled: true,
+	syncPullRequests: true,
+	lastPRFetchDate: '',
 }
 
 interface StarredRepo {
@@ -33,6 +37,28 @@ interface StarredRepo {
 		login: string;
 		avatar_url: string;
 	};
+}
+
+interface PullRequest {
+	id: number;
+	number: number;
+	title: string;
+	html_url: string;
+	state: string;
+	created_at: string;
+	updated_at: string;
+	closed_at: string | null;
+	merged_at: string | null;
+	draft: boolean;
+	pull_request?: {
+		url: string;
+		html_url: string;
+		merged_at: string | null;
+	};
+	repository_url: string;
+	labels: Array<{
+		name: string;
+	}>;
 }
 
 export default class GitHubPlugin extends Plugin {
@@ -60,11 +86,32 @@ export default class GitHubPlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'github-fetch-prs-force',
+			name: 'Force fetch all pull requests',
+			callback: async () => {
+				this.settings.lastPRFetchDate = ""
+				await this.saveSettings()
+				await this.fetchPullRequests();
+			}
+		});
+
+		this.addCommand({
+			id: 'github-fetch-prs',
+			name: 'Fetch pull requests',
+			callback: async () => {
+				await this.fetchPullRequests();
+			}
+		});
+
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new GitHubSettingTab(this.app, this));
 
 		// Check if settings are ready to fetch stars when plugin loads
 		await this.fetchStars();
+		if (this.settings.syncPullRequests) {
+			await this.fetchPullRequests();
+		}
 	}
 
 	onunload() {
@@ -245,6 +292,165 @@ export default class GitHubPlugin extends Plugin {
 
 		return !exists;
 	}
+
+	async fetchPullRequests() {
+		if (!this.settings.syncEnabled) {
+			new Notice('Sync is disabled. Enable it in settings to fetch pull requests.');
+			return;
+		}
+
+		if (!this.settingsAreValid()) {
+			new Notice('Please set both GitHub username and target directory in settings.');
+			return;
+		}
+
+		try {
+			// Ensure target directory exists
+			await this.ensureTargetDirectoryExists();
+
+			// Fetch pull requests
+			let prsCount = 0;
+			let page = 1;
+			let continueFetch = true;
+			const firstFetch = this.settings.lastPRFetchDate == "";
+			
+			while (firstFetch || continueFetch) {
+				const response = await this.getPullRequests(page);
+
+				for (const pr of response.prs) {
+					const created = await this.createNoteForPR(pr);
+					if (!firstFetch && !created) {
+						continueFetch = false;
+						break;
+					}
+
+					prsCount++;
+				}
+
+				if (prsCount !== 0) {
+					new Notice(`Fetched ${prsCount} pull requests`);
+				}
+
+				// Check if we have more pages to fetch
+				if (!response.hasMore) {
+					break;
+				}
+
+				page++;
+			}
+
+			// Update last fetch date
+			this.settings.lastPRFetchDate = new Date().toISOString();
+			await this.saveSettings();
+
+			if (prsCount !== 0) {
+				new Notice(`Total ${prsCount} pull requests`);
+			}
+		} catch (error) {
+			console.error('Error fetching pull requests:', error);
+			new Notice(`Error fetching pull requests: ${error.message}`);
+		}
+	}
+
+	async getPullRequests(page: number): Promise<{ prs: PullRequest[], hasMore: boolean }> {
+		const {apiToken, username} = this.settings;
+		const perPage = 100;
+
+		const params: RequestUrlParam = {
+			url: `https://api.github.com/search/issues?q=author:${username}+type:pr&per_page=${perPage}&page=${page}&sort=created&order=desc`,
+			method: 'GET',
+			headers: {
+				'Accept': 'application/vnd.github.v3+json',
+				'User-Agent': 'GitHub-Plugin'
+			}
+		};
+
+		if (apiToken) {
+			params.headers = {
+				...params.headers,
+				'Authorization': `token ${apiToken}`
+			};
+		}
+
+		const response = await requestUrl(params);
+		const data = response.json as { items: PullRequest[], total_count: number };
+
+		return {prs: data.items, hasMore: data.items.length == perPage}
+	}
+
+	async createNoteForPR(pr: PullRequest): Promise<boolean> {
+		const {vault} = this.app;
+		
+		// Extract repository info from repository_url
+		// Format: https://api.github.com/repos/{owner}/{repo}
+		const repoUrlParts = pr.repository_url.split('/');
+		const repoOwner = repoUrlParts[repoUrlParts.length - 2];
+		const repoName = repoUrlParts[repoUrlParts.length - 1];
+		const repoFullName = `${repoOwner}/${repoName}`;
+		
+		const fileName = `${this.settings.targetDirectory}/pr-${repoOwner}-${repoName}-${pr.number}.md`;
+
+		// Build tags list
+		const tagsList = ['type/github-pr'];
+		
+		// Add state tag
+		tagsList.push(`github/pr-state/${pr.state}`);
+		
+		// Add draft tag if applicable
+		if (pr.draft) {
+			tagsList.push('github/pr-draft');
+		}
+		
+		// Add merged tag if applicable
+		if (pr.pull_request?.merged_at || pr.merged_at) {
+			tagsList.push('github/pr-merged');
+		}
+		
+		// Add labels as tags
+		for (const label of pr.labels || []) {
+			tagsList.push(`github/pr-label/${label.name.toLowerCase().replace(/\s+/g, '-')}`);
+		}
+
+		const exists = await vault.adapter.exists(fileName);
+		try {
+			let file: TFile;
+
+			if (exists) {
+				// Get existing file
+				const existingFile = this.app.vault.getAbstractFileByPath(fileName);
+
+				if (existingFile && existingFile instanceof TFile) {
+					file = existingFile;
+				} else {
+					throw new Error(`File exists but couldn't be accessed: ${fileName}`);
+				}
+			} else {
+				// Create new file with minimal content
+				const initialContent = `# ${pr.title}\n\n`;
+				file = await vault.create(fileName, initialContent);
+			}
+
+			// Use the same API for both new and existing files
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				frontmatter['tags'] = tagsList;
+				frontmatter['title'] = pr.title.replace(/"/g, '\\"');
+				frontmatter['url'] = pr.html_url;
+				frontmatter['repository'] = repoFullName;
+				frontmatter['repository_url'] = `https://github.com/${repoFullName}`;
+				frontmatter['owner'] = `https://github.com/${repoOwner}`;
+				frontmatter['pr_number'] = pr.number;
+				frontmatter['state'] = pr.state;
+				frontmatter['draft'] = pr.draft || false;
+				frontmatter['closed_at'] = pr.closed_at || 'Not closed';
+				frontmatter['merged_at'] = (pr.pull_request?.merged_at || pr.merged_at) || 'Not merged';
+				frontmatter['lastUpdated'] = new Date().toLocaleString();
+			});
+		} catch (error) {
+			console.error(`Error creating note for PR #${pr.number}:`, error);
+		}
+
+		return !exists;
+	}
 }
 
 
@@ -304,11 +510,21 @@ class GitHubSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Enable sync')
-			.setDesc('Allow automatic and manual syncing of GitHub stars')
+			.setDesc('Allow automatic and manual syncing of GitHub data')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.syncEnabled)
 				.onChange(async (value) => {
 					this.plugin.settings.syncEnabled = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Sync pull requests')
+			.setDesc('Also sync pull requests authored by the user')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.syncPullRequests)
+				.onChange(async (value) => {
+					this.plugin.settings.syncPullRequests = value;
 					await this.plugin.saveSettings();
 				}));
     
@@ -317,7 +533,7 @@ class GitHubSettingTab extends PluginSettingTab {
       lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
     }
     new Setting(containerEl)
-      .setName('Last fetch')
+      .setName('Last star fetch')
       .setDesc(`Stars were last fetched on: ${lastFetchDate}`);
 
     new Setting(containerEl)
@@ -330,6 +546,28 @@ class GitHubSettingTab extends PluginSettingTab {
 					this.plugin.settings.lastFetchDate = ""
 					await this.plugin.saveSettings()
 					await this.plugin.fetchStars();
+					// Refresh the settings view to show updated last fetch date
+					this.display();
+				}));
+
+		let lastPRFetchDate = 'never';
+		if (this.plugin.settings.lastPRFetchDate) {
+			lastPRFetchDate = new Date(this.plugin.settings.lastPRFetchDate).toLocaleString();
+		}
+		new Setting(containerEl)
+			.setName('Last PR fetch')
+			.setDesc(`Pull requests were last fetched on: ${lastPRFetchDate}`);
+
+		new Setting(containerEl)
+			.setName('Force fetch pull requests')
+			.setDesc('Manually trigger re-fetching all pull requests')
+			.addButton(button => button
+				.setButtonText('Fetch PRs')
+				.setCta()
+				.onClick(async () => {
+					this.plugin.settings.lastPRFetchDate = ""
+					await this.plugin.saveSettings()
+					await this.plugin.fetchPullRequests();
 					// Refresh the settings view to show updated last fetch date
 					this.display();
 				}));
