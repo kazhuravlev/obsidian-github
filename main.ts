@@ -311,16 +311,16 @@ class GitHubSettingTab extends PluginSettingTab {
 					this.plugin.settings.syncEnabled = value;
 					await this.plugin.saveSettings();
 				}));
+    
+    let lastFetchDate = 'never';
+    if (this.plugin.settings.lastFetchDate) {
+      lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
+    }
+    new Setting(containerEl)
+      .setName('Last fetch')
+      .setDesc(`Stars were last fetched on: ${lastFetchDate}`);
 
-		// Display last fetch date if available
-		if (this.plugin.settings.lastFetchDate) {
-			const lastFetchDate = new Date(this.plugin.settings.lastFetchDate);
-			new Setting(containerEl)
-				.setName('Last fetch')
-				.setDesc(`Stars were last fetched on ${lastFetchDate.toLocaleString()}`);
-		}
-
-		new Setting(containerEl)
+    new Setting(containerEl)
 			.setName('Force fetch stars')
 			.setDesc('Manually trigger re-fetching starred repositories')
 			.addButton(button => button
