@@ -1,6 +1,6 @@
 import {App, Notice, Plugin, PluginSettingTab, Setting, TFile} from 'obsidian';
 import {requestUrl, RequestUrlParam} from 'obsidian';
-import { DirSuggest } from 'suggest';
+import {DirSuggest} from 'suggest';
 
 
 interface GitHubPluginSettings {
@@ -556,13 +556,13 @@ class GitHubSettingTab extends PluginSettingTab {
 				try {
 					new DirSuggest(this.app, cb.inputEl);
 				} catch (e) {
-          new Notice(e.toString(), 3000);
+					new Notice(e.toString(), 3000);
 				}
 				cb.setPlaceholder('Example: dir1/dir2')
 					.setValue(this.plugin.settings.targetDirectory)
 					.onChange(async (dir) => {
 						this.plugin.settings.targetDirectory = dir;
-					  await	this.plugin.saveSettings();
+						await this.plugin.saveSettings();
 					});
 			});
 
@@ -572,12 +572,8 @@ class GitHubSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl)
-			.setName('Last star fetch')
-			.setDesc(`Stars were last fetched on: ${lastFetchDate}`);
-
-		new Setting(containerEl)
 			.setName('Force fetch stars')
-			.setDesc('Manually trigger re-fetching starred repositories')
+			.setDesc(`Re-fetch all starred repos. Last fetched on: ${lastFetchDate}`)
 			.addButton(button => button
 				.setButtonText('Fetch stars')
 				.setCta()
@@ -620,13 +616,10 @@ class GitHubSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.lastPRFetchDate) {
 			lastPRFetchDate = new Date(this.plugin.settings.lastPRFetchDate).toLocaleString();
 		}
-		new Setting(containerEl)
-			.setName('Last PR fetch')
-			.setDesc(`Pull requests were last fetched on: ${lastPRFetchDate}`);
 
 		new Setting(containerEl)
 			.setName('Force fetch pull requests')
-			.setDesc('Manually trigger re-fetching all pull requests')
+			.setDesc(`Re-fetch all Pull Requests. Last fetched on: ${lastPRFetchDate}`)
 			.addButton(button => button
 				.setButtonText('Fetch PRs')
 				.setCta()
