@@ -69,17 +69,6 @@ export default class GitHubPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'github-fetch-stars-force',
-			name: 'Force fetch all stars',
-			callback: async () => {
-				this.settings.lastFetchDate = ""
-				await this.saveSettings()
-				await this.fetchStars();
-			}
-		});
-
 		this.addCommand({
 			id: 'github-fetch-stars',
 			name: 'Fetch stars',
@@ -89,12 +78,12 @@ export default class GitHubPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'github-fetch-prs-force',
-			name: 'Force fetch all pull requests',
+			id: 'github-fetch-stars-force',
+			name: 'Fetch stars (force)',
 			callback: async () => {
-				this.settings.lastPRFetchDate = ""
+				this.settings.lastFetchDate = ""
 				await this.saveSettings()
-				await this.fetchPullRequests();
+				await this.fetchStars();
 			}
 		});
 
@@ -102,6 +91,16 @@ export default class GitHubPlugin extends Plugin {
 			id: 'github-fetch-prs',
 			name: 'Fetch pull requests',
 			callback: async () => {
+				await this.fetchPullRequests();
+			}
+		});
+
+		this.addCommand({
+			id: 'github-fetch-prs-force',
+			name: 'Fetch pull requests (force)',
+			callback: async () => {
+				this.settings.lastPRFetchDate = ""
+				await this.saveSettings()
 				await this.fetchPullRequests();
 			}
 		});
@@ -351,7 +350,7 @@ export default class GitHubPlugin extends Plugin {
 			let page = 1;
 			let continueFetch = true;
 			const firstFetch = this.settings.lastPRFetchDate == "";
-			
+
 			while (firstFetch || continueFetch) {
 				const response = await this.getPullRequests(page);
 
@@ -418,40 +417,40 @@ export default class GitHubPlugin extends Plugin {
 
 	async createNoteForPR(pr: PullRequest): Promise<boolean> {
 		const {vault} = this.app;
-		
+
 		// Extract repository info from repository_url
 		// Format: https://api.github.com/repos/{owner}/{repo}
 		const repoUrlParts = pr.repository_url.split('/');
 		const repoOwner = repoUrlParts[repoUrlParts.length - 2];
 		const repoName = repoUrlParts[repoUrlParts.length - 1];
 		const repoFullName = `${repoOwner}/${repoName}`;
-		
+
 		// Create a safe filename from PR title
 		const safePrTitle = pr.title
 			.replace(/[\\/:*?"<>|]/g, '-') // Replace invalid filename characters
 			.replace(/\s+/g, '_') // Replace spaces with underscores
 			.substring(0, 50); // Limit length to avoid too long filenames
-		
+
 		const prDir = this.settings.prDirectory || this.settings.targetDirectory;
 		const repoDir = `${prDir}/${repoOwner}/${repoName}`;
 		const fileName = `${repoDir}/${pr.number}_${safePrTitle}.md`;
 
 		// Build tags list
 		const tagsList = ['type/github-pr'];
-		
+
 		// Add state tag
 		tagsList.push(`github/pr-state/${pr.state}`);
-		
+
 		// Add draft tag if applicable
 		if (pr.draft) {
 			tagsList.push('github/pr-draft');
 		}
-		
+
 		// Add merged tag if applicable
 		if (pr.pull_request?.merged_at || pr.merged_at) {
 			tagsList.push('github/pr-merged');
 		}
-		
+
 		// Add labels as tags
 		for (const label of pr.labels || []) {
 			tagsList.push(`github/pr-label/${label.name.toLowerCase().replace(/\s+/g, '-')}`);
@@ -593,7 +592,7 @@ class GitHubSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
-    
+
     let lastFetchDate = 'never';
     if (this.plugin.settings.lastFetchDate) {
       lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
