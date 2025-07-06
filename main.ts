@@ -530,7 +530,7 @@ class GitHubSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('GitHub username')
-			.setDesc('GitHub username')
+			.setDesc('Your username in GitHub')
 			.addText(text => text
 				.setPlaceholder('Enter your username')
 				.setValue(this.plugin.settings.username)
@@ -540,7 +540,17 @@ class GitHubSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Target directory')
+			.setName('Sync stars')
+			.setDesc('Allow automatic and manual syncing of GitHub data')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.syncEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.syncEnabled = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Stars directory')
 			.setDesc('Directory where GitHub data will be stored')
 			.addSearch(cb => {
 				try {
@@ -556,14 +566,27 @@ class GitHubSettingTab extends PluginSettingTab {
 					});
 			});
 
+		let lastFetchDate = 'never';
+		if (this.plugin.settings.lastFetchDate) {
+			lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
+		}
+
 		new Setting(containerEl)
-			.setName('Enable sync')
-			.setDesc('Allow automatic and manual syncing of GitHub data')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.syncEnabled)
-				.onChange(async (value) => {
-					this.plugin.settings.syncEnabled = value;
-					await this.plugin.saveSettings();
+			.setName('Last star fetch')
+			.setDesc(`Stars were last fetched on: ${lastFetchDate}`);
+
+		new Setting(containerEl)
+			.setName('Force fetch stars')
+			.setDesc('Manually trigger re-fetching starred repositories')
+			.addButton(button => button
+				.setButtonText('Fetch stars')
+				.setCta()
+				.onClick(async () => {
+					this.plugin.settings.lastFetchDate = ""
+					await this.plugin.saveSettings()
+					await this.plugin.fetchStars();
+					// Refresh the settings view to show updated last fetch date
+					this.display();
 				}));
 
 		new Setting(containerEl)
@@ -592,28 +615,6 @@ class GitHubSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
-
-    let lastFetchDate = 'never';
-    if (this.plugin.settings.lastFetchDate) {
-      lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
-    }
-    new Setting(containerEl)
-      .setName('Last star fetch')
-      .setDesc(`Stars were last fetched on: ${lastFetchDate}`);
-
-    new Setting(containerEl)
-			.setName('Force fetch stars')
-			.setDesc('Manually trigger re-fetching starred repositories')
-			.addButton(button => button
-				.setButtonText('Fetch stars')
-				.setCta()
-				.onClick(async () => {
-					this.plugin.settings.lastFetchDate = ""
-					await this.plugin.saveSettings()
-					await this.plugin.fetchStars();
-					// Refresh the settings view to show updated last fetch date
-					this.display();
-				}));
 
 		let lastPRFetchDate = 'never';
 		if (this.plugin.settings.lastPRFetchDate) {
