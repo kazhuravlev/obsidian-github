@@ -277,12 +277,12 @@ export default class GitHubPlugin extends Plugin {
 
 		// Add language as a tag if present
 		if (repo.language) {
-			tagsList.push(`github/language/${repo.language.toLowerCase()}`)
+			tagsList.push(`github/language/${normalizeTag(repo.language)}`)
 		}
 
 		// Add repository topics if they exist
 		for (const topic of repo.topics || []) {
-			tagsList.push(`github/topic/${topic}`)
+			tagsList.push(`github/topic/${normalizeTag(topic)}`)
 		}
 
 		// Format dates for Obsidian
@@ -638,4 +638,11 @@ class GitHubSettingTab extends PluginSettingTab {
 					this.display();
 				}));
 	}
+}
+
+// normalizeTag will replace all "not supported" symbols to '_' and make string lower-case.
+function normalizeTag(tag: string): string {
+	return tag
+		.toLowerCase()
+		.replace(/[^a-z0-9/_-]/g, '_');
 }
