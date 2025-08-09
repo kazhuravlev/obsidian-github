@@ -313,7 +313,7 @@ export default class GitHubPlugin extends Plugin {
 			// Use the same API for both new and existing files
 			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 				frontmatter['tags'] = tagsList;
-				frontmatter['aliases'] = repo.name;
+				frontmatter['aliases'] = [repo.name];
 				frontmatter['description'] = (repo.description || 'No description').replace(/"/g, '\\"');
 				frontmatter['url'] = repo.html_url;
 				frontmatter['owner'] = `https://github.com/${repo.owner.login}`;
