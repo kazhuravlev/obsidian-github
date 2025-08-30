@@ -1,5 +1,6 @@
 {
   "id": "github",
+
   "name": "GitHub Integration",
   "version": "1.10.0",
   "minAppVersion": "1.8.0",
