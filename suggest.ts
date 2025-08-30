@@ -1,5 +1,5 @@
 // NOTE: copied from https://github.com/anpigon/obsidian-book-search-plugin/blob/master/src/settings/suggesters/suggest.ts
-import {TAbstractFile, TFolder} from 'obsidian';
+import {TAbstractFile, TFolder, TFile} from 'obsidian';
 
 
 import {App, ISuggestOwner, Scope} from 'obsidian';
@@ -207,6 +207,32 @@ export class DirSuggest extends TextInputSuggest<TFolder> {
   }
 
   selectSuggestion(file: TFolder): void {
+    this.inputEl.value = file.path;
+    this.inputEl.trigger('input');
+    this.close();
+  }
+}
+
+export class FileSuggest extends TextInputSuggest<TFile> {
+  getSuggestions(inputStr: string): TFile[] {
+    const abstractFiles = this.app.vault.getAllLoadedFiles();
+    const files: TFile[] = [];
+    const lowerCaseInputStr = inputStr.toLowerCase();
+
+    abstractFiles.forEach((file: TAbstractFile) => {
+      if (file instanceof TFile && file.path.toLowerCase().contains(lowerCaseInputStr)) {
+        files.push(file);
+      }
+    });
+
+    return files;
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement): void {
+    el.setText(file.path);
+  }
+
+  selectSuggestion(file: TFile): void {
     this.inputEl.value = file.path;
     this.inputEl.trigger('input');
     this.close();
