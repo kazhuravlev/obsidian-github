@@ -2,7 +2,6 @@ import {App, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, Sett
 import {DirSuggest, FileSuggest} from 'suggest';
 import * as Handlebars from "handlebars";
 
-
 interface GitHubPluginSettings {
 	apiToken: string;
 	username: string;
