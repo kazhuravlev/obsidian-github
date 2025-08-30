@@ -1,6 +1,6 @@
-import {App, Notice, Plugin, PluginSettingTab, Setting, TFile} from 'obsidian';
-import {requestUrl, RequestUrlParam} from 'obsidian';
-import {DirSuggest} from 'suggest';
+import {App, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, Setting, TFile} from 'obsidian';
+import {DirSuggest, FileSuggest} from 'suggest';
+import * as Handlebars from "handlebars";
 
 
 interface GitHubPluginSettings {
@@ -12,6 +12,10 @@ interface GitHubPluginSettings {
 	syncPullRequests: boolean;
 	lastPRFetchDate: string;
 	prDirectory: string;
+	useDefaultTemplateStar: boolean;
+	templatePathStar: string;
+	useDefaultTemplatePR: boolean;
+	templatePathPR: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
@@ -23,6 +27,10 @@ const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	syncPullRequests: true,
 	lastPRFetchDate: '',
 	prDirectory: '',
+	useDefaultTemplateStar: true,
+	templatePathStar: '',
+	useDefaultTemplatePR: true,
+	templatePathPR: '',
 }
 
 interface StarredRepo {
@@ -271,19 +279,6 @@ export default class GitHubPlugin extends Plugin {
 		const {vault} = this.app;
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
-		// Build tags list starting with default github tag
-		const tagsList = ['type/github-star'];
-
-		// Add language as a tag if present
-		if (repo.language) {
-			tagsList.push(`github/language/${normalizeTag(repo.language)}`)
-		}
-
-		// Add repository topics if they exist
-		for (const topic of repo.topics || []) {
-			tagsList.push(`github/topic/${normalizeTag(topic)}`)
-		}
-
 		// Format dates for Obsidian
 		const createdDate = new Date(repo.created_at);
 		const createdFormatted = `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, '0')}-${String(createdDate.getDate()).padStart(2, '0')}`;
@@ -305,29 +300,77 @@ export default class GitHubPlugin extends Plugin {
 					throw new Error(`File exists but couldn't be accessed: ${fileName}`);
 				}
 			} else {
-				// Create new file with minimal content
-				const initialContent = `# ${repo.name}\n\n`;
-				file = await vault.create(fileName, initialContent);
+				const defaultTemplate = `# {{ name }}\n\n`;
+				const fileContent = await this.renderTemplate(
+					this.settings.useDefaultTemplateStar,
+					this.settings.templatePathStar,
+					defaultTemplate,
+					repo);
+
+				// Create new file with template or default content
+				file = await vault.create(fileName, fileContent);
 			}
 
-			// Use the same API for both new and existing files
-			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-				frontmatter['tags'] = tagsList;
-				frontmatter['aliases'] = [repo.name];
-				frontmatter['description'] = (repo.description || 'No description').replace(/"/g, '\\"');
-				frontmatter['url'] = repo.html_url;
-				frontmatter['owner'] = `https://github.com/${repo.owner.login}`;
-				frontmatter['language'] = repo.language || 'Not specified';
-				frontmatter['stars'] = repo.stargazers_count;
-				frontmatter['created'] = createdFormatted;
-				frontmatter['modified'] = modifiedFormatted;
-				frontmatter['lastUpdated'] = new Date().toLocaleString();
-			});
+			// Use this api only as part of default template
+			if (this.settings.useDefaultTemplateStar) {
+				// Build tags list starting with default github tag
+				const tagsList = ['type/github-star'];
+
+				// Add language as a tag if present
+				if (repo.language) {
+					tagsList.push(`github/language/${normalizeTag(repo.language)}`)
+				}
+
+				// Add repository topics if they exist
+				for (const topic of repo.topics || []) {
+					tagsList.push(`github/topic/${normalizeTag(topic)}`)
+				}
+
+				// Use the same API for both new and existing files
+				await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+					frontmatter['tags'] = tagsList;
+					frontmatter['aliases'] = [repo.name];
+					frontmatter['description'] = (repo.description || 'No description').replace(/"/g, '\\"');
+					frontmatter['url'] = repo.html_url;
+					frontmatter['owner'] = `https://github.com/${repo.owner.login}`;
+					frontmatter['language'] = repo.language || 'Not specified';
+					frontmatter['stars'] = repo.stargazers_count;
+					frontmatter['created'] = createdFormatted;
+					frontmatter['modified'] = modifiedFormatted;
+					frontmatter['lastUpdated'] = new Date().toLocaleString();
+				});
+			}
 		} catch (error) {
 			console.error(`Error creating note for ${repo.name}:`, error);
 		}
 
 		return !exists;
+	}
+
+	private async readTemplate(forceDefault: boolean, templatePath: string, defaultTemplate: string): Promise<string> {
+		if (forceDefault) {
+			return defaultTemplate;
+		}
+
+		if (!templatePath) {
+			new Notice(`Template path not set. Use default template.`);
+			return defaultTemplate;
+		}
+
+		const exists = await this.app.vault.adapter.exists(templatePath);
+		if (!exists) {
+			new Notice(`Template not found: ${templatePath}. Using default.`);
+			return defaultTemplate;
+		}
+
+		return await this.app.vault.adapter.read(templatePath);
+	}
+
+	private async renderTemplate<T>(forceDefault: boolean, templatePath: string, defaultTemplate: string, obj: T): Promise<string> {
+		const templateContent = await this.readTemplate(forceDefault, templatePath, defaultTemplate);
+		const template = Handlebars.compile<T>(templateContent);
+
+		return template(obj);
 	}
 
 	async fetchPullRequests() {
@@ -435,27 +478,6 @@ export default class GitHubPlugin extends Plugin {
 		const repoDir = `${prDir}/${repoOwner}/${repoName}`;
 		const fileName = `${repoDir}/${pr.number}_${safePrTitle}.md`;
 
-		// Build tags list
-		const tagsList = ['type/github-pr'];
-
-		// Add state tag
-		tagsList.push(`github/pr-state/${pr.state}`);
-
-		// Add draft tag if applicable
-		if (pr.draft) {
-			tagsList.push('github/pr-draft');
-		}
-
-		// Add merged tag if applicable
-		if (pr.pull_request?.merged_at || pr.merged_at) {
-			tagsList.push('github/pr-merged');
-		}
-
-		// Add labels as tags
-		for (const label of pr.labels || []) {
-			tagsList.push(`github/pr-label/${label.name.toLowerCase().replace(/\s+/g, '-')}`);
-		}
-
 		// Ensure repository directory exists
 		await this.ensureDirectoryExists(repoDir);
 
@@ -473,26 +495,55 @@ export default class GitHubPlugin extends Plugin {
 					throw new Error(`File exists but couldn't be accessed: ${fileName}`);
 				}
 			} else {
-				// Create new file with minimal content
-				const initialContent = `# ${pr.title}\n\n`;
-				file = await vault.create(fileName, initialContent);
+				const defaultTemplate = `# {{ title }}\n\n`;
+				const fileContent = await this.renderTemplate(
+					this.settings.useDefaultTemplatePR,
+					this.settings.templatePathPR,
+					defaultTemplate,
+					pr);
+
+				// Create new file with template or default content
+				file = await vault.create(fileName, fileContent);
 			}
 
-			// Use the same API for both new and existing files
-			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-				frontmatter['tags'] = tagsList;
-				frontmatter['title'] = pr.title.replace(/"/g, '\\"');
-				frontmatter['url'] = pr.html_url;
-				frontmatter['repository'] = repoFullName;
-				frontmatter['repository_url'] = `https://github.com/${repoFullName}`;
-				frontmatter['owner'] = `https://github.com/${repoOwner}`;
-				frontmatter['pr_number'] = pr.number;
-				frontmatter['state'] = pr.state;
-				frontmatter['draft'] = pr.draft || false;
-				frontmatter['closed_at'] = pr.closed_at || 'Not closed';
-				frontmatter['merged_at'] = (pr.pull_request?.merged_at || pr.merged_at) || 'Not merged';
-				frontmatter['lastUpdated'] = new Date().toLocaleString();
-			});
+			if (this.settings.useDefaultTemplatePR) {
+				// Build tags list
+				const tagsList = ['type/github-pr'];
+
+				// Add state tag
+				tagsList.push(`github/pr-state/${pr.state}`);
+
+				// Add draft tag if applicable
+				if (pr.draft) {
+					tagsList.push('github/pr-draft');
+				}
+
+				// Add merged tag if applicable
+				if (pr.pull_request?.merged_at || pr.merged_at) {
+					tagsList.push('github/pr-merged');
+				}
+
+				// Add labels as tags
+				for (const label of pr.labels || []) {
+					tagsList.push(`github/pr-label/${label.name.toLowerCase().replace(/\s+/g, '-')}`);
+				}
+
+				// Use the same API for both new and existing files
+				await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+					frontmatter['tags'] = tagsList;
+					frontmatter['title'] = pr.title.replace(/"/g, '\\"');
+					frontmatter['url'] = pr.html_url;
+					frontmatter['repository'] = repoFullName;
+					frontmatter['repository_url'] = `https://github.com/${repoFullName}`;
+					frontmatter['owner'] = `https://github.com/${repoOwner}`;
+					frontmatter['pr_number'] = pr.number;
+					frontmatter['state'] = pr.state;
+					frontmatter['draft'] = pr.draft || false;
+					frontmatter['closed_at'] = pr.closed_at || 'Not closed';
+					frontmatter['merged_at'] = (pr.pull_request?.merged_at || pr.merged_at) || 'Not merged';
+					frontmatter['lastUpdated'] = new Date().toLocaleString();
+				});
+			}
 		} catch (error) {
 			console.error(`Error creating note for PR #${pr.number}:`, error);
 		}
@@ -566,6 +617,36 @@ class GitHubSettingTab extends PluginSettingTab {
 					});
 			});
 
+		new Setting(containerEl)
+			.setName('Use default template for Stars')
+			.setDesc('Use the built-in template for rendering Stars')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useDefaultTemplateStar)
+				.onChange(async (value) => {
+					this.plugin.settings.useDefaultTemplateStar = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom template file for Stars')
+			.setDesc('Path to a note inside the vault to use as template for new files')
+			.addSearch(cb => {
+				try {
+					new FileSuggest(this.app, cb.inputEl);
+				} catch (e) {
+					new Notice(e.toString(), 3000);
+				}
+				cb.setPlaceholder('Example: Templates/GitHub Star.md')
+					.setValue(this.plugin.settings.templatePathStar)
+					.onChange(async (path) => {
+						this.plugin.settings.templatePathStar = path;
+						await this.plugin.saveSettings();
+					});
+				// Disable when using default template
+				cb.inputEl.disabled = this.plugin.settings.useDefaultTemplateStar;
+			});
+
 		let lastFetchDate = 'never';
 		if (this.plugin.settings.lastFetchDate) {
 			lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
@@ -610,6 +691,36 @@ class GitHubSettingTab extends PluginSettingTab {
 						this.plugin.settings.prDirectory = dir;
 						await this.plugin.saveSettings();
 					});
+			});
+
+		new Setting(containerEl)
+			.setName('Use default template for PR')
+			.setDesc('Use the built-in template for rendering Pull Requests')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useDefaultTemplatePR)
+				.onChange(async (value) => {
+					this.plugin.settings.useDefaultTemplatePR = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom template file for PR')
+			.setDesc('Path to a note inside the vault to use as template for new files')
+			.addSearch(cb => {
+				try {
+					new FileSuggest(this.app, cb.inputEl);
+				} catch (e) {
+					new Notice(e.toString(), 3000);
+				}
+				cb.setPlaceholder('Example: Templates/GitHub PR.md')
+					.setValue(this.plugin.settings.templatePathPR)
+					.onChange(async (path) => {
+						this.plugin.settings.templatePathPR = path;
+						await this.plugin.saveSettings();
+					});
+				// Disable when using default template
+				cb.inputEl.disabled = this.plugin.settings.useDefaultTemplatePR;
 			});
 
 		let lastPRFetchDate = 'never';
