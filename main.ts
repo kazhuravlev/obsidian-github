@@ -1,6 +1,6 @@
 import {App, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, Setting, TFile} from 'obsidian';
 import {DirSuggest, FileSuggest} from 'suggest';
-import Handlebars from "handlebars";
+import * as Handlebars from "handlebars";
 
 
 interface GitHubPluginSettings {
