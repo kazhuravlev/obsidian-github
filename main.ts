@@ -12,6 +12,10 @@ interface GitHubPluginSettings {
 	syncPullRequests: boolean;
 	lastPRFetchDate: string;
 	prDirectory: string;
+	useDefaultTemplateStar: boolean;
+	templatePathStar: string;
+	useDefaultTemplatePR: boolean;
+	templatePathPR: string;
 }
 
 const DEFAULT_SETTINGS: GitHubPluginSettings = {
@@ -23,6 +27,10 @@ const DEFAULT_SETTINGS: GitHubPluginSettings = {
 	syncPullRequests: true,
 	lastPRFetchDate: '',
 	prDirectory: '',
+	useDefaultTemplateStar: true,
+	templatePathStar: '',
+	useDefaultTemplatePR: true,
+	templatePathPR: '',
 }
 
 interface StarredRepo {
@@ -641,6 +649,36 @@ class GitHubSettingTab extends PluginSettingTab {
 						this.plugin.settings.prDirectory = dir;
 						await this.plugin.saveSettings();
 					});
+			});
+
+		new Setting(containerEl)
+			.setName('Use default template for PR')
+			.setDesc('Use the built-in template for rendering Pull Requests')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useDefaultTemplatePR)
+				.onChange(async (value) => {
+					this.plugin.settings.useDefaultTemplatePR = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom template file for PR')
+			.setDesc('Path to a note inside the vault to use as template for new files')
+			.addSearch(cb => {
+				try {
+					new FileSuggest(this.app, cb.inputEl);
+				} catch (e) {
+					new Notice(e.toString(), 3000);
+				}
+				cb.setPlaceholder('Example: Templates/GitHub PR.md')
+					.setValue(this.plugin.settings.templatePathPR)
+					.onChange(async (path) => {
+						this.plugin.settings.templatePathPR = path;
+						await this.plugin.saveSettings();
+					});
+				// Disable when using default template
+				cb.inputEl.disabled = this.plugin.settings.useDefaultTemplatePR;
 			});
 
 		let lastPRFetchDate = 'never';
