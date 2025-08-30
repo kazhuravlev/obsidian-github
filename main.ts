@@ -566,6 +566,37 @@ class GitHubSettingTab extends PluginSettingTab {
 					});
 			});
 
+		new Setting(containerEl)
+			.setName('Use default template for Stars')
+			.setDesc('Use the built-in template for rendering Stars')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useDefaultTemplateStar)
+				.onChange(async (value) => {
+					this.plugin.settings.useDefaultTemplateStar = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom template file for Stars')
+			.setDesc('Path to a note inside the vault to use as template for new files')
+			.addSearch(cb => {
+				try {
+					new FileSuggest(this.app, cb.inputEl);
+				} catch (e) {
+					new Notice(e.toString(), 3000);
+				}
+				cb.setPlaceholder('Example: Templates/GitHub Star.md')
+					.setValue(this.plugin.settings.templatePathStar)
+					.onChange(async (path) => {
+						this.plugin.settings.templatePathStar = path;
+						await this.plugin.saveSettings();
+					});
+				// Disable when using default template
+				cb.inputEl.disabled = this.plugin.settings.useDefaultTemplateStar;
+			});
+
+
 		let lastFetchDate = 'never';
 		if (this.plugin.settings.lastFetchDate) {
 			lastFetchDate = new Date(this.plugin.settings.lastFetchDate).toLocaleString();
