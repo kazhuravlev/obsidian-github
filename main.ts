@@ -338,6 +338,32 @@ export default class GitHubPlugin extends Plugin {
 		return !exists;
 	}
 
+	private async readTemplate(forceDefault: boolean, templatePath: string, defaultTemplate: string): Promise<string> {
+		if (forceDefault) {
+			return defaultTemplate;
+		}
+
+		if (!templatePath) {
+			new Notice(`Template path not set. Use default template.`);
+			return defaultTemplate;
+		}
+
+		const exists = await this.app.vault.adapter.exists(templatePath);
+		if (!exists) {
+			new Notice(`Template not found: ${templatePath}. Using default.`);
+			return defaultTemplate;
+		}
+
+		return await this.app.vault.adapter.read(templatePath);
+	}
+
+	private async renderTemplate<T>(forceDefault: boolean, templatePath: string, defaultTemplate: string, obj: T): Promise<string> {
+		const templateContent = await this.readTemplate(forceDefault, templatePath, defaultTemplate);
+		const template = Handlebars.compile<T>(templateContent);
+
+		return template(obj);
+	}
+
 	async fetchPullRequests() {
 		if (!this.settings.syncEnabled) {
 			new Notice('Sync is disabled. Enable it in settings to fetch pull requests.');
