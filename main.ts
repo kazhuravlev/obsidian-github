@@ -311,9 +311,9 @@ export default class GitHubPlugin extends Plugin {
 			}
 
 			// Use this api only as part of default template
-			if (this.settings.useDefaultTemplateStar) {
-				// Build tags list starting with default github tag
-				const tagsList = ['type/github-star'];
+                        if (this.settings.useDefaultTemplateStar) {
+                                // Build tags list starting with default github tag
+                                const tagsList = ['type/github-star'];
 
 				// Add language as a tag if present
 				if (repo.language) {
@@ -326,25 +326,88 @@ export default class GitHubPlugin extends Plugin {
 				}
 
 				// Use the same API for both new and existing files
-				await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-					frontmatter['tags'] = tagsList;
-					frontmatter['aliases'] = [repo.name];
-					frontmatter['description'] = (repo.description || 'No description').replace(/"/g, '\\"');
-					frontmatter['url'] = repo.html_url;
-					frontmatter['owner'] = `https://github.com/${repo.owner.login}`;
-					frontmatter['language'] = repo.language || 'Not specified';
-					frontmatter['stars'] = repo.stargazers_count;
-					frontmatter['created'] = createdFormatted;
-					frontmatter['modified'] = modifiedFormatted;
-					frontmatter['lastUpdated'] = new Date().toLocaleString();
-				});
-			}
-		} catch (error) {
-			console.error(`Error creating note for ${repo.name}:`, error);
-		}
+                                await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                                        frontmatter['tags'] = tagsList;
+                                        frontmatter['aliases'] = [repo.name];
+                                        frontmatter['description'] = (repo.description || 'No description').replace(/"/g, '\\"');
+                                        frontmatter['url'] = repo.html_url;
+                                        frontmatter['owner'] = `https://github.com/${repo.owner.login}`;
+                                        frontmatter['language'] = repo.language || 'Not specified';
+                                        frontmatter['stars'] = repo.stargazers_count;
+                                        frontmatter['created'] = createdFormatted;
+                                        frontmatter['modified'] = modifiedFormatted;
+                                        frontmatter['lastUpdated'] = new Date().toLocaleString();
+                                });
 
-		return !exists;
-	}
+                                await this.updateFileWithReadme(file, repo);
+                        }
+                } catch (error) {
+                        console.error(`Error creating note for ${repo.name}:`, error);
+                }
+
+                return !exists;
+        }
+
+        private async updateFileWithReadme(file: TFile, repo: StarredRepo): Promise<void> {
+                const readmeContent = await this.fetchReadmeContent(repo);
+                if (!readmeContent) {
+                        return;
+                }
+
+                try {
+                        const existingContent = await this.app.vault.read(file);
+                        const frontmatterMatch = existingContent.match(/^---\n[\s\S]*?\n---\n?/);
+                        const normalizedReadme = readmeContent.replace(/\r\n/g, '\n').trimStart();
+
+                        if (frontmatterMatch) {
+                                const frontmatterBlock = frontmatterMatch[0];
+                                const newContent = `${frontmatterBlock.trimEnd()}\n\n${normalizedReadme}\n`;
+                                await this.app.vault.modify(file, newContent);
+                        } else {
+                                await this.app.vault.modify(file, normalizedReadme);
+                        }
+                } catch (error) {
+                        console.error(`Error updating README content for ${repo.full_name}:`, error);
+                }
+        }
+
+        private async fetchReadmeContent(repo: StarredRepo): Promise<string | null> {
+                const candidateNames = [
+                        'README.md',
+                        'README.MD',
+                        'Readme.md',
+                        'readme.md',
+                        'README.markdown',
+                        'README.markdown'.toLowerCase(),
+                        'README.rst',
+                        'README.txt',
+                        'README'
+                ];
+
+                for (const name of candidateNames) {
+                        try {
+                                const response = await requestUrl({
+                                        url: `https://raw.githubusercontent.com/${repo.full_name}/HEAD/${name}`,
+                                        method: 'GET',
+                                        headers: {
+                                                'User-Agent': 'GitHub-Plugin'
+                                        }
+                                });
+
+                                if (response.status >= 200 && response.status < 300) {
+                                        return response.text;
+                                }
+                        } catch (error) {
+                                const status = (error as { status?: number })?.status;
+                                if (status && status === 404) {
+                                        continue;
+                                }
+                                console.warn(`Error fetching README (${name}) for ${repo.full_name}:`, error);
+                        }
+                }
+
+                return null;
+        }
 
 	private async readTemplate(forceDefault: boolean, templatePath: string, defaultTemplate: string): Promise<string> {
 		if (forceDefault) {
