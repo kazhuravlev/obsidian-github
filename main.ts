@@ -174,7 +174,8 @@ export default class GitHubPlugin extends Plugin {
 				const response = await this.getStarredRepos(page);
 
 				for (const repo of response.stars) {
-					const created = await this.createNoteForRepo(repo);
+					const readMe = await this.fetchReadmeContent(repo);
+					const created = await this.createNoteForRepo(repo,readMe);
 					if (!firstFetch && !created) {
 						continueFetch = false;
 						break;
@@ -274,7 +275,7 @@ export default class GitHubPlugin extends Plugin {
 		return {stars: stars, hasMore: stars.length == perPage}
 	}
 
-	async createNoteForRepo(repo: StarredRepo): Promise<boolean> {
+	async createNoteForRepo(repo: StarredRepo, content: string): Promise<boolean> {
 		const {vault} = this.app;
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
@@ -286,27 +287,25 @@ export default class GitHubPlugin extends Plugin {
 
 		const exists = await vault.adapter.exists(fileName);
 		try {
+			const defaultTemplate = `{{{ content }}}`;
+			const fileContent = await this.renderTemplate(
+				this.settings.useDefaultTemplateStar,
+				this.settings.templatePathStar,
+				defaultTemplate,
+				{content:new Handlebars.SafeString(content)}
+			);
+
 			let file: TFile;
-
 			if (exists) {
-				// Get existing file
 				const existingFile = this.app.vault.getAbstractFileByPath(fileName);
-
 				if (existingFile && existingFile instanceof TFile) {
 					file = existingFile;
+					await vault.modify(file, fileContent);
 				} else {
 					// This shouldn't happen, but just in case
 					throw new Error(`File exists but couldn't be accessed: ${fileName}`);
 				}
 			} else {
-				const defaultTemplate = `# {{ name }}\n\n`;
-				const fileContent = await this.renderTemplate(
-					this.settings.useDefaultTemplateStar,
-					this.settings.templatePathStar,
-					defaultTemplate,
-					repo);
-
-				// Create new file with template or default content
 				file = await vault.create(fileName, fileContent);
 			}
 
@@ -339,7 +338,6 @@ export default class GitHubPlugin extends Plugin {
                                         frontmatter['lastUpdated'] = new Date().toLocaleString();
                                 });
 
-                                await this.updateFileWithReadme(file, repo);
                         }
                 } catch (error) {
                         console.error(`Error creating note for ${repo.name}:`, error);
@@ -348,65 +346,35 @@ export default class GitHubPlugin extends Plugin {
                 return !exists;
         }
 
-        private async updateFileWithReadme(file: TFile, repo: StarredRepo): Promise<void> {
-                const readmeContent = await this.fetchReadmeContent(repo);
-                if (!readmeContent) {
-                        return;
-                }
-
+        private async fetchReadmeContent(repo: StarredRepo): Promise<string> {
                 try {
-                        const existingContent = await this.app.vault.read(file);
-                        const frontmatterMatch = existingContent.match(/^---\n[\s\S]*?\n---\n?/);
-                        const normalizedReadme = readmeContent.replace(/\r\n/g, '\n').trimStart();
-
-                        if (frontmatterMatch) {
-                                const frontmatterBlock = frontmatterMatch[0];
-                                const newContent = `${frontmatterBlock.trimEnd()}\n\n${normalizedReadme}\n`;
-                                await this.app.vault.modify(file, newContent);
-                        } else {
-                                await this.app.vault.modify(file, normalizedReadme);
+                        const params: RequestUrlParam = {
+                                url: `https://api.github.com/repos/${repo.full_name}/readme`,
+                                method: 'GET',
+                                headers: {
+                                  'User-Agent': 'GitHub-Plugin',
+                                  'Accept': 'application/vnd.github+json'
+                                }
+                        };
+						if (this.settings.apiToken) {
+							params.headers = {
+								...params.headers,
+								'Authorization': `token ${this.settings.apiToken}`
+							};
+						}
+						const response = await requestUrl(params);
+						
+                        if (response.status == 200) {
+							
+							const content = response.json.content
+							return atob(content.replace(/\n/g, ''));
+							
                         }
                 } catch (error) {
-                        console.error(`Error updating README content for ${repo.full_name}:`, error);
-                }
-        }
-
-        private async fetchReadmeContent(repo: StarredRepo): Promise<string | null> {
-                const candidateNames = [
-                        'README.md',
-                        'README.MD',
-                        'Readme.md',
-                        'readme.md',
-                        'README.markdown',
-                        'README.markdown'.toLowerCase(),
-                        'README.rst',
-                        'README.txt',
-                        'README'
-                ];
-
-                for (const name of candidateNames) {
-                        try {
-                                const response = await requestUrl({
-                                        url: `https://raw.githubusercontent.com/${repo.full_name}/HEAD/${name}`,
-                                        method: 'GET',
-                                        headers: {
-                                                'User-Agent': 'GitHub-Plugin'
-                                        }
-                                });
-
-                                if (response.status >= 200 && response.status < 300) {
-                                        return response.text;
-                                }
-                        } catch (error) {
-                                const status = (error as { status?: number })?.status;
-                                if (status && status === 404) {
-                                        continue;
-                                }
-                                console.warn(`Error fetching README (${name}) for ${repo.full_name}:`, error);
-                        }
+                        console.warn(`Error fetching README for ${repo.full_name}:`, error);
                 }
 
-                return null;
+                return "";
         }
 
 	private async readTemplate(forceDefault: boolean, templatePath: string, defaultTemplate: string): Promise<string> {
@@ -812,3 +780,5 @@ function normalizeTag(tag: string): string {
 		.toLowerCase()
 		.replace(/[^a-z0-9/_-]/g, '_');
 }
+
+
