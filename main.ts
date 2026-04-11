@@ -1,17 +1,5 @@
-import {
-    App,
-    Notice,
-    Plugin,
-    PluginSettingTab,
-    requestUrl,
-    RequestUrlParam,
-    Setting,
-    TFile
-} from 'obsidian';
-import {
-    DirSuggest,
-    FileSuggest
-} from 'suggest';
+import { App, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, Setting, TFile } from 'obsidian';
+import { DirSuggest, FileSuggest } from 'suggest';
 import * as Handlebars from "handlebars";
 
 interface GitHubPluginSettings {
@@ -71,15 +59,15 @@ interface PullRequest {
     closed_at: string | null;
     merged_at: string | null;
     draft: boolean;
-    pull_request ? : {
+    pull_request?: {
         url: string;
         html_url: string;
         merged_at: string | null;
     };
     repository_url: string;
-    labels: Array < {
+    labels: Array<{
         name: string;
-    } > ;
+    }>;
 }
 
 export default class GitHubPlugin extends Plugin {
@@ -222,9 +210,7 @@ export default class GitHubPlugin extends Plugin {
     }
 
     async ensureTargetDirectoryExists() {
-        const {
-            vault
-        } = this.app;
+        const { vault } = this.app;
         const dirs = this.settings.targetDirectory.split('/').filter(p => p.trim());
 
         let currentPath = '';
@@ -237,9 +223,7 @@ export default class GitHubPlugin extends Plugin {
     }
 
     async ensurePRDirectoryExists() {
-        const {
-            vault
-        } = this.app;
+        const { vault } = this.app;
         const prDir = this.settings.prDirectory || this.settings.targetDirectory;
         const dirs = prDir.split('/').filter(p => p.trim());
 
@@ -253,9 +237,7 @@ export default class GitHubPlugin extends Plugin {
     }
 
     async ensureDirectoryExists(dirPath: string) {
-        const {
-            vault
-        } = this.app;
+        const { vault } = this.app;
         const dirs = dirPath.split('/').filter(p => p.trim());
 
         let currentPath = '';
@@ -267,14 +249,8 @@ export default class GitHubPlugin extends Plugin {
         }
     }
 
-    async getStarredRepos(page: number): Promise < {
-        stars: StarredRepo[],
-        hasMore: boolean
-    } > {
-        const {
-            apiToken,
-            username
-        } = this.settings;
+    async getStarredRepos(page: number): Promise<{ stars: StarredRepo[], hasMore: boolean }> {
+        const { apiToken, username } = this.settings;
         const perPage = 100;
 
         const params: RequestUrlParam = {
@@ -296,16 +272,11 @@ export default class GitHubPlugin extends Plugin {
         const response = await requestUrl(params);
         const stars = response.json as StarredRepo[];
 
-        return {
-            stars: stars,
-            hasMore: stars.length == perPage
-        }
+        return { stars: stars, hasMore: stars.length == perPage }
     }
 
-    async createNoteForRepo(repo: StarredRepo, content: string): Promise < boolean > {
-        const {
-            vault
-        } = this.app;
+    async createNoteForRepo(repo: StarredRepo, content: string): Promise<boolean> {
+        const { vault } = this.app;
         const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
         // Format dates for Obsidian
@@ -320,9 +291,8 @@ export default class GitHubPlugin extends Plugin {
             const fileContent = await this.renderTemplate(
                 this.settings.useDefaultTemplateStar,
                 this.settings.templatePathStar,
-                defaultTemplate, {
-                    content: new Handlebars.SafeString(content)
-                }
+                defaultTemplate,
+                { content: new Handlebars.SafeString(content) }
             );
 
             let file: TFile;
@@ -376,7 +346,7 @@ export default class GitHubPlugin extends Plugin {
         return !exists;
     }
 
-    private async fetchReadmeContent(repo: StarredRepo): Promise < string > {
+    private async fetchReadmeContent(repo: StarredRepo): Promise<string> {
         try {
             const params: RequestUrlParam = {
                 url: `https://api.github.com/repos/${repo.full_name}/readme`,
@@ -407,7 +377,7 @@ export default class GitHubPlugin extends Plugin {
         return "";
     }
 
-    private async readTemplate(forceDefault: boolean, templatePath: string, defaultTemplate: string): Promise < string > {
+    private async readTemplate(forceDefault: boolean, templatePath: string, defaultTemplate: string): Promise<string> {
         if (forceDefault) {
             return defaultTemplate;
         }
@@ -426,9 +396,9 @@ export default class GitHubPlugin extends Plugin {
         return await this.app.vault.adapter.read(templatePath);
     }
 
-    private async renderTemplate < T > (forceDefault: boolean, templatePath: string, defaultTemplate: string, obj: T): Promise < string > {
+    private async renderTemplate<T>(forceDefault: boolean, templatePath: string, defaultTemplate: string, obj: T): Promise<string> {
         const templateContent = await this.readTemplate(forceDefault, templatePath, defaultTemplate);
-        const template = Handlebars.compile < T > (templateContent);
+        const template = Handlebars.compile<T>(templateContent);
 
         return template(obj);
     }
@@ -492,14 +462,8 @@ export default class GitHubPlugin extends Plugin {
         }
     }
 
-    async getPullRequests(page: number): Promise < {
-        prs: PullRequest[],
-        hasMore: boolean
-    } > {
-        const {
-            apiToken,
-            username
-        } = this.settings;
+    async getPullRequests(page: number): Promise<{ prs: PullRequest[], hasMore: boolean }> {
+        const { apiToken, username } = this.settings;
         const perPage = 100;
 
         const params: RequestUrlParam = {
@@ -519,21 +483,13 @@ export default class GitHubPlugin extends Plugin {
         }
 
         const response = await requestUrl(params);
-        const data = response.json as {
-            items: PullRequest[],
-            total_count: number
-        };
+        const data = response.json as { items: PullRequest[], total_count: number };
 
-        return {
-            prs: data.items,
-            hasMore: data.items.length == perPage
-        }
+        return { prs: data.items, hasMore: data.items.length == perPage }
     }
 
-    async createNoteForPR(pr: PullRequest): Promise < boolean > {
-        const {
-            vault
-        } = this.app;
+    async createNoteForPR(pr: PullRequest): Promise<boolean> {
+        const { vault } = this.app;
 
         // Extract repository info from repository_url
         // Format: https://api.github.com/repos/{owner}/{repo}
@@ -636,9 +592,7 @@ class GitHubSettingTab extends PluginSettingTab {
     }
 
     display(): void {
-        const {
-            containerEl
-        } = this;
+        const { containerEl } = this;
 
         containerEl.empty();
 
