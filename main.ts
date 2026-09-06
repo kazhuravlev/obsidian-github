@@ -42,6 +42,7 @@ interface StarredRepo {
 	language: string;
 	stargazers_count: number;
 	topics: string[];
+	default_branch: string;
 	owner: {
 		login: string;
 		avatar_url: string;
@@ -174,7 +175,8 @@ export default class GitHubPlugin extends Plugin {
 				const response = await this.getStarredRepos(page);
 
 				for (const repo of response.stars) {
-					const created = await this.createNoteForRepo(repo);
+					const readMe = await this.fetchReadmeContent(repo);
+					const created = await this.createNoteForRepo(repo, readMe);
 					if (!firstFetch && !created) {
 						continueFetch = false;
 						break;
@@ -182,7 +184,6 @@ export default class GitHubPlugin extends Plugin {
 
 					reposCount++;
 				}
-
 				if (reposCount !== 0) {
 					new Notice(`Fetched ${reposCount} GitHub stars`);
 				}
@@ -206,6 +207,37 @@ export default class GitHubPlugin extends Plugin {
 			console.error('Error fetching GitHub stars:', error);
 			new Notice(`Error fetching GitHub stars: ${error.message}`);
 		}
+	}
+
+	private async fetchReadmeContent(repo: StarredRepo): Promise<string> {
+		try {
+			const params: RequestUrlParam = {
+				url: `https://api.github.com/repos/${repo.full_name}/readme`,
+				method: 'GET',
+				headers: {
+					'User-Agent': 'GitHub-Plugin',
+					'Accept': 'application/vnd.github+json'
+				}
+			};
+			if (this.settings.apiToken) {
+				params.headers = {
+					...params.headers,
+					'Authorization': `token ${this.settings.apiToken}`
+				};
+			}
+			const response = await requestUrl(params);
+
+			if (response.status == 200) {
+				const data = response.json;
+				const content = decodeBase64Content(data.content);
+				const branch = repo.default_branch || 'main';
+				return rewriteReadmeLinks(content, repo.full_name, data.path || 'README.md', branch);
+			}
+		} catch (error) {
+			console.warn(`Error fetching README for ${repo.full_name}:`, error);
+		}
+
+		return "";
 	}
 
 	async ensureTargetDirectoryExists() {
@@ -274,7 +306,7 @@ export default class GitHubPlugin extends Plugin {
 		return {stars: stars, hasMore: stars.length == perPage}
 	}
 
-	async createNoteForRepo(repo: StarredRepo): Promise<boolean> {
+	async createNoteForRepo(repo: StarredRepo, content: string): Promise<boolean> {
 		const {vault} = this.app;
 		const fileName = `${this.settings.targetDirectory}/${repo.full_name.replace('/', '-')}.md`;
 
@@ -285,28 +317,30 @@ export default class GitHubPlugin extends Plugin {
 		const modifiedFormatted = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
 
 		const exists = await vault.adapter.exists(fileName);
+		// Don't wipe an existing note when the README fetch failed (empty content)
+		if (exists && !content.trim()) {
+			return !exists;
+		}
 		try {
+			const defaultTemplate = `{{{ content }}}`;
+			const fileContent = await this.renderTemplate(
+				this.settings.useDefaultTemplateStar,
+				this.settings.templatePathStar,
+				defaultTemplate,
+				{ ...repo, content: new Handlebars.SafeString(content) }
+			);
+
 			let file: TFile;
-
 			if (exists) {
-				// Get existing file
 				const existingFile = this.app.vault.getAbstractFileByPath(fileName);
-
 				if (existingFile && existingFile instanceof TFile) {
 					file = existingFile;
+					await vault.modify(file, fileContent);
 				} else {
 					// This shouldn't happen, but just in case
 					throw new Error(`File exists but couldn't be accessed: ${fileName}`);
 				}
 			} else {
-				const defaultTemplate = `# {{ name }}\n\n`;
-				const fileContent = await this.renderTemplate(
-					this.settings.useDefaultTemplateStar,
-					this.settings.templatePathStar,
-					defaultTemplate,
-					repo);
-
-				// Create new file with template or default content
 				file = await vault.create(fileName, fileContent);
 			}
 
@@ -741,6 +775,83 @@ class GitHubSettingTab extends PluginSettingTab {
 					this.display();
 				}));
 	}
+}
+
+function decodeBase64Content(content: string): string {
+	const binary = atob(content.replace(/\n/g, ''));
+	const bytes = new Uint8Array(binary.length);
+
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+
+	return new TextDecoder().decode(bytes);
+}
+
+function rewriteReadmeLinks(content: string, fullName: string, readmePath: string, branch: string): string {
+	const readmeDir = readmePath.includes('/') ? readmePath.slice(0, readmePath.lastIndexOf('/') + 1) : '';
+	const rawBase = `https://raw.githubusercontent.com/${fullName}/${branch}/`;
+	const blobBase = `https://github.com/${fullName}/blob/${branch}/`;
+	const toRepoUrl = (url: string, base: string): string => {
+		if (/^(?:https?:)?\/\//i.test(url) || url.startsWith('mailto:') || url.startsWith('data:') || url.startsWith('#')) {
+			return url;
+		}
+
+		const hashIndex = url.indexOf('#');
+		const path = hashIndex === -1 ? url : url.slice(0, hashIndex);
+		const anchor = hashIndex === -1 ? '' : url.slice(hashIndex);
+		// Leading-slash paths resolve from repo root, not README dir (GitHub behavior)
+		const rootRelative = path.startsWith('/') && !path.startsWith('//');
+		const stripped = rootRelative ? path.slice(1) : path.replace(/^\.?\//, '');
+		const parts = rootRelative
+			? stripped.split('/').filter(Boolean)
+			: [...readmeDir.split('/').filter(Boolean), ...stripped.split('/')];
+		const resolved: string[] = [];
+
+		for (const part of parts) {
+			if (!part || part === '.') {
+				continue;
+			}
+			if (part === '..') {
+				resolved.pop();
+				continue;
+			}
+			resolved.push(part);
+		}
+
+		return `${base}${resolved.join('/')}${anchor}`;
+	};
+	const rewriteTarget = (target: string, base: string): string => {
+		const match = target.trim().match(/^(\S+)(.*)$/);
+		return match ? `${toRepoUrl(match[1], base)}${match[2]}` : target;
+	};
+
+	content = content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, target: string) => {
+		const rewritten = rewriteTarget(target, rawBase);
+		if (rewritten === target) {
+			return match;
+		}
+
+		return `![${alt}](${rewritten})`;
+	});
+
+	content = content.replace(/(<img\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi, (match, before, src: string, after) => {
+		const rewritten = toRepoUrl(src, rawBase);
+		return rewritten === src ? match : `${before}${rewritten}${after}`;
+	});
+
+	return content.replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, label, target: string, offset: number) => {
+		if (offset > 0 && content[offset - 1] === '!') {
+			return match;
+		}
+
+		const rewritten = rewriteTarget(target, blobBase);
+		if (rewritten === target) {
+			return match;
+		}
+
+		return `[${label}](${rewritten})`;
+	});
 }
 
 // normalizeTag will replace all "not supported" symbols to '_' and make string lower-case.
